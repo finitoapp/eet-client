@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedSideEffectImports": true,
+    "erasableSyntaxOnly": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "tsdown.config.ts"],
+  // Uses Bun-only globals (`Bun.build`/`Bun.serve`) with no Node/Deno equivalent — genuinely
+  // Bun-specific, unlike the rest of test/**, which only relies on globals Node/Bun/Deno all
+  // implement (`process`, `import.meta.dirname`, ...) and is checked here with plain `@types/node`
+  // instead, so an accidental Bun-only global elsewhere in this portable program would be a type
+  // error. See test/integration/tsconfig.browser.json, which checks this one file separately.
+  "exclude": ["test/integration/browser-live-playground.test.ts"]
+}

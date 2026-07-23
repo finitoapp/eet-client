@@ -1,0 +1,111 @@
+{
+  "name": "@finito/eet-client",
+  "version": "0.0.0",
+  "description": "Low-level TypeScript SDK for Elektronická evidence tržeb 2.0.",
+  "keywords": [
+    "eet",
+    "elektronicka-evidence-trzeb",
+    "czech",
+    "fiscalization",
+    "tax",
+    "receipts",
+    "xmldsig",
+    "ws-security",
+    "soap",
+    "typescript"
+  ],
+  "homepage": "https://github.com/finitoapp/eet-client#readme",
+  "bugs": {
+    "url": "https://github.com/finitoapp/eet-client/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/finitoapp/eet-client.git"
+  },
+  "license": "MIT",
+  "author": "Josef Kříž <pepakriz@gmail.com>",
+  "type": "module",
+  "sideEffects": false,
+  "packageManager": "bun@1.3.14",
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./zod": {
+      "import": {
+        "types": "./dist/zod.d.mts",
+        "default": "./dist/zod.mjs"
+      },
+      "require": {
+        "types": "./dist/zod.d.cts",
+        "default": "./dist/zod.cjs"
+      }
+    },
+    "./builtin": {
+      "import": {
+        "types": "./dist/builtin.d.mts",
+        "default": "./dist/builtin.mjs"
+      },
+      "require": {
+        "types": "./dist/builtin.d.cts",
+        "default": "./dist/builtin.cjs"
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit && bun run typecheck:browser-test",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck:browser-test": "tsc --noEmit -p test/integration/tsconfig.browser.json",
+    "test": "bun test --pass-with-no-tests",
+    "test:coverage": "bun test --pass-with-no-tests --coverage",
+    "test:node": "node --test \"src/**/*.test.ts\" \"test/**/*.test.ts\"",
+    "test:deno": "deno test --no-check -A \"src/**/*.test.ts\" \"test/**/*.test.ts\"",
+    "test:integration:p12": "EET_TEST_P12=1 bun test test/integration",
+    "test:integration:cors": "EET_TEST_CORS=1 bun test test/integration",
+    "test:integration:live": "EET_TEST_LIVE_PLAYGROUND=1 bun test test/integration",
+    "test:integration:live-browser": "EET_TEST_LIVE_PLAYGROUND_BROWSER=1 bun test test/integration",
+    "check": "bun run lint && bun run typecheck && bun run test",
+    "precheck:package": "bun run build",
+    "check:package": "publint"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "peerDependencies": {
+    "zod": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.5",
+    "@types/bun": "^1.3.14",
+    "@types/node": "^24.0.0",
+    "playwright": "^1.61.1",
+    "publint": "^0.3.22",
+    "tsdown": "^0.22.13",
+    "typescript": "^6.0.3",
+    "zod": "^4.4.3"
+  }
+}

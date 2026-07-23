@@ -1,0 +1,11 @@
+[test]
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageSkipTestFiles = true
+
+# Comfortably below the current aggregate (~98% functions / ~97.7% lines as of writing) so minor,
+# incidental fluctuation doesn't make CI flaky, while still failing `test:coverage` on a real
+# regression. Enforced against the aggregate "All files" row, not per-file.
+[test.coverageThreshold]
+line = 0.9
+function = 0.9
