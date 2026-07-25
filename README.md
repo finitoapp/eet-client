@@ -46,6 +46,7 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 - [Použití v prohlížeči](#použití-v-prohlížeči)
 - [Architektura](#architektura)
 - [Rozsah první verze](#rozsah-první-verze)
+- [Verzování](#verzování)
 - [Vývoj](#vývoj)
 - [Přispívání](#přispívání)
 - [Licence](#licence)
@@ -613,6 +614,21 @@ mimo předdefinovaných/číselných odkazů jsou odmítnuty) a před vrácením
 Není součástí: automatické retry/fronta, doménové workflow pokladny/účtenky,
 načítání PEM/PFX v veřejném API, produkční endpoint (dokud jej GFŘ oficiálně
 nezveřejní — vždy jej dodá integrátor konfigurací).
+
+## Verzování
+
+EET playground API zatím není ze strany GFŘ (provozovatele EET) prohlášené za
+stabilní, a proto ani tento projekt nechceme prohlašovat za stabilní — na
+druhou stranu playground už je k dispozici, takže knihovna se dá začít
+používat už teď. Volíme proto standardní semver `0.x.y` po celou přípravnou
+fázi: breaking changes zvyšují `minor` (`0.1.0`, `0.2.0`, ...), ne `patch`.
+`0.0.x` vědomě nepoužíváme jako "přípravnou" řadu samo o sobě — `npm`/`bun` k
+`^0.0.x` rozsahům přistupují jako k přesnému pinu bez auto-update, což by šlo
+proti záměru nechat knihovnu už teď reálně zkoušet.
+
+`1.0.0` je rezervovaná pro první release po oficiálním vyhlášení stability EET
+API ze strany GFŘ — to bude první opravdu vážně míněný stable release, ne
+interně zvolené datum.
 
 ## Vývoj
 
