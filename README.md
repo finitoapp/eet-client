@@ -1,4 +1,4 @@
-# @finito/eet-client
+# @finitoapp/eet-client
 
 [![CI](https://github.com/finitoapp/eet-client/actions/workflows/ci.yml/badge.svg)](https://github.com/finitoapp/eet-client/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
@@ -16,7 +16,7 @@ požadavek dle WS-Security/XMLDSig, odešle jej a bezpečně vyhodnotí odpově�
 systému EET.
 
 Balíček nemá žádné runtime závislosti (`zod` je jen volitelný
-`peerDependency` pro podcestu [`@finito/eet-client/zod`](#finitoeet-clientzod),
+`peerDependency` pro podcestu [`@finitoapp/eet-client/zod`](#finitoappeet-clientzod),
 který se do vašeho bundlu nedostane, pokud ho neimportujete) — celé XML/C14N a
 XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 
@@ -37,8 +37,8 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
   - [Typované chyby (`result.error`)](#typované-chyby-resulterror)
 - [Samostatné pomocné funkce](#samostatné-pomocné-funkce)
 - [Validace vstupu](#validace-vstupu)
-  - [`@finito/eet-client/builtin`](#finitoeet-clientbuiltin)
-  - [`@finito/eet-client/zod`](#finitoeet-clientzod)
+  - [`@finitoapp/eet-client/builtin`](#finitoappeet-clientbuiltin)
+  - [`@finitoapp/eet-client/zod`](#finitoappeet-clientzod)
 - [Opakované odeslání](#opakované-odeslání)
 - [Bezpečné nakládání s certifikáty](#bezpečné-nakládání-s-certifikáty)
   - [Model důvěry `createCryptoKeySigner`/`createCryptoKeyResponseSignatureVerifier`](#model-důvěry-createcryptokeysignercreatecryptokeyresponsesignatureverifier)
@@ -70,16 +70,16 @@ Chromiu (viz [Použití v prohlížeči](#použití-v-prohlížeči)).
 ## Instalace
 
 ```sh
-bun add @finito/eet-client
+bun add @finitoapp/eet-client
 # nebo
-npm install @finito/eet-client
+npm install @finitoapp/eet-client
 ```
 
 ## Rychlý start
 
 ```ts
-import { createEetClient, EetEndpoint } from "@finito/eet-client";
-import { parseEetReceiptData } from "@finito/eet-client/builtin";
+import { createEetClient, EetEndpoint } from "@finitoapp/eet-client";
+import { parseEetReceiptData } from "@finitoapp/eet-client/builtin";
 
 const client = createEetClient({
   endpoint: EetEndpoint.playground,
@@ -127,11 +127,11 @@ vyhazování výjimek. Balíček k tomu exportuje i samotné pomocníky `ok`, `e
 `isOk`, `isErr`, `getOrThrow`, `getOrNull`, `trySync`, `tryAsync` — hodí se
 i pro vlastní `signer`/`responseSignatureVerifier` adaptéry.
 
-`@finito/eet-client` (hlavní balíček) je validátor-agnostický — nemá vestavěnou
+`@finitoapp/eet-client` (hlavní balíček) je validátor-agnostický — nemá vestavěnou
 žádnou validaci a neví, čím `EetReceiptData`/`EetHeader` vznikly. Validaci
 vybíráte samostatným importem, viz [Validace vstupu](#validace-vstupu):
-`@finito/eet-client/builtin` (hand-rolled, bez závislostí — použito výše) nebo
-`@finito/eet-client/zod` (zod v4).
+`@finitoapp/eet-client/builtin` (hand-rolled, bez závislostí — použito výše) nebo
+`@finitoapp/eet-client/zod` (zod v4).
 
 Vstup `parseEetReceiptData` odpovídá elementu `<Data>` z `EETXMLSchema.xsd` —
 vlastnosti používají stejná XML jména jako specifikace (`eic_popl`, `id_pokl`,
@@ -145,7 +145,7 @@ lokální čas. Nepovinné vlastnosti se musí zcela vynechat, ne nastavit na
 `submit()` sám o sobě `receipt` nevaliduje — bere rovnou obrandovaný
 `EetReceiptData`, výstup `parseEetReceiptData` (nebo libovolného jiného
 validátoru se stejným výstupním typem, např. zod schématu z
-[`@finito/eet-client/zod`](#validace-vstupu)). Validace `receipt` je tak
+[`@finitoapp/eet-client/zod`](#validace-vstupu)). Validace `receipt` je tak
 vyměnitelná; `submit()` sám o sobě nevaliduje vůbec nic —
 `options.uuid`/`options.sentAt`, pokud je zadáte, musí být také už obrandované
 (`Uuid`/`EetDateTime`), stejně jako `receipt`.
@@ -176,7 +176,7 @@ jiným bezpečným úložištěm. Pro nejčastější případ — podepisován�
 není potřeba psát ručně (funguje v Node.js, Bunu i prohlížeči):
 
 ```ts
-import { createCryptoKeySigner } from "@finito/eet-client";
+import { createCryptoKeySigner } from "@finitoapp/eet-client";
 
 const privateKey = await crypto.subtle.importKey(
   "pkcs8",
@@ -228,7 +228,7 @@ Výsledné `.der` soubory pak stačí načíst a předat do `crypto.subtle`:
 
 ```ts
 import { readFileSync } from "node:fs";
-import { createCryptoKeySigner } from "@finito/eet-client";
+import { createCryptoKeySigner } from "@finitoapp/eet-client";
 
 const certificateDer = new Uint8Array(readFileSync("cert.der"));
 const keyDer = new Uint8Array(readFileSync("key.der"));
@@ -312,7 +312,7 @@ certifikát (princip pinningu) — SDK nabízí hotový helper
 `createCryptoKeyResponseSignatureVerifier`:
 
 ```ts
-import { createCryptoKeyResponseSignatureVerifier } from "@finito/eet-client";
+import { createCryptoKeyResponseSignatureVerifier } from "@finitoapp/eet-client";
 
 const verifier = createCryptoKeyResponseSignatureVerifier(
   trustedPublicKeySpkiDer,
@@ -392,7 +392,7 @@ vlastní transport nebo signer bez duplikace protokolové logiky:
 
 ## Validace vstupu
 
-`@finito/eet-client` (hlavní balíček) neobsahuje žádnou validaci — `submit()`
+`@finitoapp/eet-client` (hlavní balíček) neobsahuje žádnou validaci — `submit()`
 bere rovnou obrandovaný `EetReceiptData`/`EetHeader` a je mu jedno, čím
 vznikly. Validaci si vyberete samostatným podcestovým importem; obě cesty
 prosazují stejná pravidla (stejné regexy z `EETXMLSchema.xsd`, stejná kontrola
@@ -400,16 +400,16 @@ kalendářního data u `dateTime`) a produkují tytéž obrandované typy, takž
 vzájemně zaměnitelné a se zbytkem SDK (`submit()`, `buildTrzbaElement`, ...)
 kompatibilní obě:
 
-- **`@finito/eet-client/builtin`** — hand-rolled, bez runtime závislostí. `parseEetReceiptData`, `parseHeader` vrací `Result<T, EetValidationError>` s brandovanými typy jako `TaxPayerId`, `Amount`, `Uuid`, ...
-- **`@finito/eet-client/zod`** — schémata pro [zod](https://zod.dev) v4, pro koho preferuje zod. Popsáno níže.
+- **`@finitoapp/eet-client/builtin`** — hand-rolled, bez runtime závislostí. `parseEetReceiptData`, `parseHeader` vrací `Result<T, EetValidationError>` s brandovanými typy jako `TaxPayerId`, `Amount`, `Uuid`, ...
+- **`@finitoapp/eet-client/zod`** — schémata pro [zod](https://zod.dev) v4, pro koho preferuje zod. Popsáno níže.
 
 Ani jeden z modulů se do vašeho bundlu nedostane, pokud ho neimportujete — main
-entry point (`@finito/eet-client`) na žádný z nich neváže.
+entry point (`@finitoapp/eet-client`) na žádný z nich neváže.
 
-### `@finito/eet-client/builtin`
+### `@finitoapp/eet-client/builtin`
 
 ```ts
-import { parseEetReceiptData, parseHeader } from "@finito/eet-client/builtin";
+import { parseEetReceiptData, parseHeader } from "@finitoapp/eet-client/builtin";
 
 const parsedReceipt = parseEetReceiptData({
   eic_popl: "CZ8551015704",
@@ -425,10 +425,10 @@ if (!parsedReceipt.ok) {
 }
 ```
 
-### `@finito/eet-client/zod`
+### `@finitoapp/eet-client/zod`
 
 `zod` je `peerDependencies` (volitelná — `peerDependenciesMeta.zod.optional`),
-ne běžná závislost: pokud `@finito/eet-client/zod` neimportujete, `zod` se do
+ne běžná závislost: pokud `@finitoapp/eet-client/zod` neimportujete, `zod` se do
 vašeho bundlu vůbec nedostane. Kdo tuto cestu chce použít, nainstaluje si zod
 sám:
 
@@ -439,8 +439,8 @@ npm install zod
 ```
 
 ```ts
-import { createEetClient, EetEndpoint } from "@finito/eet-client";
-import { EetReceiptDataZodSchema } from "@finito/eet-client/zod";
+import { createEetClient, EetEndpoint } from "@finitoapp/eet-client";
+import { EetReceiptDataZodSchema } from "@finitoapp/eet-client/zod";
 
 const parsedReceipt = EetReceiptDataZodSchema.safeDecode({
   eic_popl: "CZ8551015704",

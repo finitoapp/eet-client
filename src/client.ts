@@ -24,8 +24,8 @@ export interface EetClient {
  * `firstSubmission: false`.
  *
  * `submit()` performs no validation of its own: `data` must already be an {@link EetReceiptData}
- * — parse a raw receipt with `parseEetReceiptData` from `@finito/eet-client/builtin`, a zod
- * schema from `@finito/eet-client/zod`, or any other validator producing the same branded type,
+ * — parse a raw receipt with `parseEetReceiptData` from `@finitoapp/eet-client/builtin`, a zod
+ * schema from `@finitoapp/eet-client/zod`, or any other validator producing the same branded type,
  * before calling it — and `options.uuid`/`options.sentAt`, if given, must already be branded —
  * `submit()` trusts both as-is. Omitted `uuid`/`sentAt` are filled in with
  * `generateUuid()`/`generateEetDateTime()`, correct by construction.

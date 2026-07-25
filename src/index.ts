@@ -1,9 +1,9 @@
 /**
- * Public API of `@finito/eet-client`: a low-level, portable TypeScript SDK for sending one
+ * Public API of `@finitoapp/eet-client`: a low-level, portable TypeScript SDK for sending one
  * EET 2.0 (Elektronická evidence tržeb) `OdeslaniTrzby` data message per call. This entry point
  * is validator-agnostic — it has no opinion on how you produce a branded `EetReceiptData`/
- * `EetHeader`. Pick one: `@finito/eet-client/builtin` (hand-rolled, no dependencies) or
- * `@finito/eet-client/zod` (zod v4 schemas), or write your own. See the README for a full usage
+ * `EetHeader`. Pick one: `@finitoapp/eet-client/builtin` (hand-rolled, no dependencies) or
+ * `@finitoapp/eet-client/zod` (zod v4 schemas), or write your own. See the README for a full usage
  * example.
  */
 
