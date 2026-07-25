@@ -34,64 +34,68 @@ interface EetBrowserHarnessWindow {
   ): Promise<EetSubmitOutcome>;
 }
 
-describe("Live EET playground round trip in a real browser (opt-in, network)", {
-  skip: !ENABLED,
-}, () => {
-  test("submit() run inside a real Chromium tab accepts a valid receipt with a verified signature", {
-    timeout: 30_000,
-  }, async () => {
-    const build = await Bun.build({
-      entrypoints: [new URL("./browser-harness.ts", import.meta.url).pathname],
-      target: "browser",
-      format: "esm",
+(ENABLED ? describe : describe.skip)(
+  "Live EET playground round trip in a real browser (opt-in, network)",
+  () => {
+    test("submit() run inside a real Chromium tab accepts a valid receipt with a verified signature", {
+      timeout: 30_000,
+    }, async () => {
+      const build = await Bun.build({
+        entrypoints: [new URL("./browser-harness.ts", import.meta.url).pathname],
+        target: "browser",
+        format: "esm",
+      });
+      if (!build.success) {
+        throw new AggregateError(
+          build.logs,
+          "Failed to bundle browser-harness.ts for the browser.",
+        );
+      }
+      const [bundleOutput] = build.outputs;
+      if (bundleOutput === undefined)
+        throw new Error("Bun.build produced no output for browser-harness.ts.");
+      const bundleText = await bundleOutput.text();
+
+      const { certificateDer, keyDer } = loadPlaygroundP12Signer("CZ8551015704");
+      const certificateDerBase64 = encodeBase64(certificateDer);
+      const keyDerBase64 = encodeBase64(keyDer);
+
+      // `crypto.subtle` only exists in a "secure context"; `about:blank`'s opaque origin does not
+      // qualify, but loopback addresses always do regardless of scheme. A throwaway local server
+      // just gives the page a `http://localhost` origin to be served from.
+      const server = Bun.serve({
+        port: 0,
+        fetch: () =>
+          new Response("<!doctype html><title>eet-browser-harness</title>", {
+            headers: { "content-type": "text/html" },
+          }),
+      });
+
+      const browser = await chromium.launch({
+        headless: true,
+        // --no-sandbox is required in sandboxed/containerized dev environments without a working
+        // user namespace; harmless for this throwaway, headless-only instance.
+        args: ["--disable-web-security", "--no-sandbox"],
+      });
+      try {
+        const page = await browser.newPage();
+        await page.goto(`http://localhost:${server.port}/`);
+        await page.addScriptTag({ content: bundleText, type: "module" });
+
+        const outcome = await page.evaluate(
+          ([certB64, keyB64]) =>
+            (window as unknown as EetBrowserHarnessWindow).__runEetBrowserSubmit(certB64, keyB64),
+          [certificateDerBase64, keyDerBase64] as [string, string],
+        );
+
+        assert.strictEqual(outcome.status, "accepted");
+        if (outcome.status !== "accepted") throw new Error("unreachable");
+        assert.strictEqual(outcome.test, true);
+        assert.strictEqual(outcome.pok.endsWith("-ff"), true); // playground POK is always fictitious
+      } finally {
+        await browser.close();
+        server.stop();
+      }
     });
-    if (!build.success) {
-      throw new AggregateError(build.logs, "Failed to bundle browser-harness.ts for the browser.");
-    }
-    const [bundleOutput] = build.outputs;
-    if (bundleOutput === undefined)
-      throw new Error("Bun.build produced no output for browser-harness.ts.");
-    const bundleText = await bundleOutput.text();
-
-    const { certificateDer, keyDer } = loadPlaygroundP12Signer("CZ8551015704");
-    const certificateDerBase64 = encodeBase64(certificateDer);
-    const keyDerBase64 = encodeBase64(keyDer);
-
-    // `crypto.subtle` only exists in a "secure context"; `about:blank`'s opaque origin does not
-    // qualify, but loopback addresses always do regardless of scheme. A throwaway local server
-    // just gives the page a `http://localhost` origin to be served from.
-    const server = Bun.serve({
-      port: 0,
-      fetch: () =>
-        new Response("<!doctype html><title>eet-browser-harness</title>", {
-          headers: { "content-type": "text/html" },
-        }),
-    });
-
-    const browser = await chromium.launch({
-      headless: true,
-      // --no-sandbox is required in sandboxed/containerized dev environments without a working
-      // user namespace; harmless for this throwaway, headless-only instance.
-      args: ["--disable-web-security", "--no-sandbox"],
-    });
-    try {
-      const page = await browser.newPage();
-      await page.goto(`http://localhost:${server.port}/`);
-      await page.addScriptTag({ content: bundleText, type: "module" });
-
-      const outcome = await page.evaluate(
-        ([certB64, keyB64]) =>
-          (window as unknown as EetBrowserHarnessWindow).__runEetBrowserSubmit(certB64, keyB64),
-        [certificateDerBase64, keyDerBase64] as [string, string],
-      );
-
-      assert.strictEqual(outcome.status, "accepted");
-      if (outcome.status !== "accepted") throw new Error("unreachable");
-      assert.strictEqual(outcome.test, true);
-      assert.strictEqual(outcome.pok.endsWith("-ff"), true); // playground POK is always fictitious
-    } finally {
-      await browser.close();
-      server.stop();
-    }
-  });
-});
+  },
+);

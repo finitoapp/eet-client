@@ -59,7 +59,7 @@ const trustingButUnchainedVerifier: ResponseSignatureVerifier = {
   },
 };
 
-describe("Live EET playground round trip (opt-in, network)", { skip: !ENABLED }, () => {
+(ENABLED ? describe : describe.skip)("Live EET playground round trip (opt-in, network)", () => {
   test("submit() against the real playground accepts a valid receipt with a verified signature", {
     timeout: 20_000,
   }, async () => {

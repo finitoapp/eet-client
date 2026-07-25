@@ -26,7 +26,7 @@ const ENABLED = process.env["EET_TEST_P12"] === "1";
 
 const CAEET_DIR = join(import.meta.dirname, "..", "..", "caeet");
 
-describe("Real playground .p12 signer (opt-in, no network)", { skip: !ENABLED }, () => {
+(ENABLED ? describe : describe.skip)("Real playground .p12 signer (opt-in, no network)", () => {
   test("the cash-register certificate chains to the bundled playground CA and its signature verifies", () => {
     const { certificatePem } = loadPlaygroundP12Signer("CZ8551015704");
     const leaf = new X509Certificate(certificatePem);

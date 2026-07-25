@@ -28,7 +28,7 @@ const ENABLED = process.env["EET_TEST_CORS"] === "1";
 
 const ARBITRARY_ORIGIN = "https://totally-unrelated-integrator.example";
 
-describe("Live EET playground CORS behavior (opt-in, network)", { skip: !ENABLED }, () => {
+(ENABLED ? describe : describe.skip)("Live EET playground CORS behavior (opt-in, network)", () => {
   test("does not grant an arbitrary browser origin permission to call the SOAP endpoint", {
     timeout: 15_000,
   }, async () => {
