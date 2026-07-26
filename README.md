@@ -5,7 +5,7 @@
 
 *Low-level, portable TypeScript SDK for a single Czech "Elektronická evidence
 tržeb 2.0" (EET 2.0, electronic sales registration) submission — see
-[Installation](#instalace) for `npm`/`bun`. Documentation below is in Czech
+[Installation](#instalace) for `npm`/`bun`/`deno`. Documentation below is in Czech
 (the EET protocol itself is Czech-law-specific); see
 [CONTRIBUTING.md](./CONTRIBUTING.md) if you'd like to contribute.*
 
@@ -30,7 +30,7 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 - [Rychlý start](#rychlý-start)
 - [Signer](#signer)
   - [Nastavení klíče z reálného pokladního certifikátu (.p12/PFX)](#nastavení-klíče-z-reálného-pokladního-certifikátu-p12pfx)
-    - [V Node.js/Bunu](#v-nodejsbunu)
+    - [V Node.js/Bunu/Denu](#v-nodejsbunudenu)
     - [V prohlížeči](#v-prohlížeči)
 - [Ověření podpisu odpovědi](#ověření-podpisu-odpovědi)
 - [Výsledky `submit()`](#výsledky-submit)
@@ -73,6 +73,8 @@ Chromiu (viz [Použití v prohlížeči](#použití-v-prohlížeči)).
 bun add @finitoapp/eet-client
 # nebo
 npm install @finitoapp/eet-client
+# nebo (Deno)
+deno add npm:@finitoapp/eet-client
 ```
 
 ## Rychlý start
@@ -173,7 +175,7 @@ interface EetSigner {
 Adaptér tak může být postavený nad `CryptoKey` (Web Crypto), HSM, KMS nebo
 jiným bezpečným úložištěm. Pro nejčastější případ — podepisování nad
 `CryptoKey` — SDK nabízí hotový helper `createCryptoKeySigner`, takže adaptér
-není potřeba psát ručně (funguje v Node.js, Bunu i prohlížeči):
+není potřeba psát ručně (funguje v Node.js, Bunu, Denu i prohlížeči):
 
 ```ts
 import { createCryptoKeySigner } from "@finitoapp/eet-client";
@@ -200,7 +202,7 @@ Certifikační autorita vydává pokladní certifikát jako soubor PKCS#12
 a PKCS8 privátní klíč) — `.p12` je nutné rozbalit předem, jednorázově, mimo
 `crypto.subtle`. Postup se liší podle toho, kde váš kód běží:
 
-#### V Node.js/Bunu
+#### V Node.js/Bunu/Denu
 
 Rozbalte `.p12` jednou, přímo v shellu, přes `openssl` (heslo dejte do
 souboru, ne jako argument — ten je vidět v seznamu procesů):
@@ -239,6 +241,10 @@ const privateKey = await crypto.subtle.importKey(
 
 const signer = createCryptoKeySigner(certificateDer, privateKey);
 ```
+
+V Denu funguje `node:fs` import beze změny, skript ale navíc musíte spustit
+s `--allow-read` (Deno defaultně blokuje přístup k souborovému systému, dokud
+ho explicitně nepovolíte).
 
 Kdo `.der` soubory na disku držet nechce (např. v CI), může místo posledních
 dvou příkazů zachytit `-out`/PEM výstup rovnou v paměti přes podproces a
