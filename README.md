@@ -29,6 +29,7 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 - [Instalace](#instalace)
 - [Rychlý start](#rychlý-start)
 - [Signer](#signer)
+  - [Získání produkčního pokladního certifikátu](#získání-produkčního-pokladního-certifikátu)
   - [Nastavení klíče z reálného pokladního certifikátu (.p12/PFX)](#nastavení-klíče-z-reálného-pokladního-certifikátu-p12pfx)
     - [V Node.js/Bunu/Denu](#v-nodejsbunudenu)
     - [V prohlížeči](#v-prohlížeči)
@@ -195,6 +196,53 @@ SDK **nenačítá ani nekonvertuje PEM/PFX/PKCS#12** — převod pokladního
 certifikátu do formátu, který si `signer` zvolí, je na integrátorovi (viz
 [Bezpečné nakládání s certifikáty](#bezpečné-nakládání-s-certifikáty)).
 
+### Získání produkčního pokladního certifikátu
+
+Než bude mít `signer` co podepisovat, potřebujete od GFŘ vydaný **pokladní
+certifikát** — tato SDK ho nevydává ani negeneruje, pouze s ním pracuje.
+Podle dokumentu [„Přístupové a provozní informace — produkční
+prostředí“](./docs/reference/eet-2.0/EET_pristupove_provozni_informace_produkce_v1.md)
+(kap. 3.1) probíhá vydání takto:
+
+1. **Portál.** Obslužný portál certifikační autority (CA EET 2) je dostupný
+   přes portál MOJE daně, v aplikaci **Daňová informační schránka plus
+   (DIS+)**. Přístup do DIS+ vyžaduje standardní přihlášení poplatníka
+   (datová schránka, bankovní identita, elektronický občanský průkaz apod. —
+   viz samotný portál MOJE daně).
+2. **Počet certifikátů.** Poplatník si může vyžádat jeden nebo více pokladních
+   certifikátů; kolik jich bude mít a jak je rozdělí mezi jednotlivé pokladny,
+   je čistě na něm. Limit je max. 10 vydaných certifikátů za den a
+   provozovnu (ochrana proti zahlcení systému).
+3. **Vydaný certifikát.** RSA 2048, `CN` = vaše EIČ (Evidenční identifikační
+   číslo přidělené v DIS+), platnost **366 dní** — certifikát je tedy nutné
+   každý rok včas obnovit, jinak přestanete moci podepisovat nové datové
+   zprávy. Certifikát vydává `EETv2 NCA SubCA RSA ...`, nad kterou stojí
+   kořenová `EETv2 NCA Root CA RSA ...` (dvouúrovňová hierarchie CA EET 2).
+4. **Revokace.** Pokud certifikát zneplatníte (ztráta klíče, výměna pokladny
+   apod.), CRL na `https://caeet.gov.cz/crldp` se aktualizuje do 1 minuty;
+   běžná frekvence vydávání CRL je jinak každých 8 hodin.
+
+Zdrojový dokument bohužel neuvádí, v jakém technickém formátu DIS+ certifikát
+vydává — tj. jestli si v portálu nahrajete vlastní CSR (žádost o certifikát s
+veřejným klíčem, kdy privátní klíč vznikne a zůstane jen u vás), nebo jestli
+portál klíčový pár vygeneruje sám a vydá vám rovnou balíček PKCS#12
+(certifikát + privátní klíč, chráněné heslem) — tak, jak to GFŘ dělá u
+sdílených testovacích certifikátů playgroundu (viz [`caeet/`](./caeet)). Podle
+toho, co vám DIS+ nabídne, pokračujte:
+
+- **Dostanete PKCS#12 (`.p12`/`.pfx`)** → postupujte podle sekce
+  [Nastavení klíče z reálného pokladního certifikátu (.p12/PFX)](#nastavení-klíče-z-reálného-pokladního-certifikátu-p12pfx)
+  níže.
+- **Portál umožní nahrát vlastní CSR** → vygenerujte klíčový pár lokálně
+  (např. `crypto.subtle.generateKey` s `extractable: false`, nebo v HSM/KMS),
+  z veřejného klíče sestavte PKCS#10 CSR s `CN` = vaše EIČ a nahrajte jen
+  CSR — privátní klíč portálu (a tedy ani síti) nikdy neopustí vaše prostředí.
+  Vrácený DER certifikát pak předáte přímo do `createCryptoKeySigner` spolu s
+  lokálně drženým `CryptoKey`, bez jakékoli konverze `.p12`.
+
+Pokud si nejste jistí, který postup DIS+ v danou chvíli nabízí, ověřte to
+přímo v portálu nebo se obraťte na podporu EET (<epodpora@fs.gov.cz>).
+
 ### Nastavení klíče z reálného pokladního certifikátu (.p12/PFX)
 
 Certifikační autorita vydává pokladní certifikát jako soubor PKCS#12
@@ -333,8 +381,30 @@ volání.
 **Pinning ≠ chain-of-trust validace**: helper porovná leaf certifikát z
 odpovědi bajt po bajtu s `trustedCertificateDer` a ověří RSA-SHA256 podpis
 proti `publicKey` — nekontroluje vydavatele, platnost ani revokaci a nemá
-fallback na kořenovou CA. Pro produkci, kde chcete ověřovat celý řetězec až
-ke kořenové CA GFŘ, si napište vlastní adaptér implementující rozhraní výše.
+fallback na kořenovou CA. Pokud chcete ověřovat celý řetězec, napište si
+vlastní adaptér implementující rozhraní výše.
+
+Toto omezení není nedodělek, ale záměrné rozhodnutí. Podpisový certifikát
+odpovědí GFŘ totiž **nepochází z hierarchie EET CA** (té, kterou najdete v
+[`caeet/`](./caeet) a která vydává pokladní certifikáty) — podle
+[přístupových a provozních informací
+playgroundu](./docs/reference/eet-2.0/EET_pristupove_provozni_informace_playground_1_1.md)
+(kap. 3.3) ho vydává komerční autorita **I.CA (První certifikační autorita,
+a.s.)**, `CN = I.CA Public CA/RSA 06/2022`. Root ani intermediate certifikáty
+I.CA nejsou součástí žádného EET dokumentu ani distribuce — GFŘ na ně jen
+odkazuje (<https://www.ica.cz/korenove-certifikaty>), bez jakékoli záruky,
+jak často se budou obnovovat nebo jak stabilní jejich vydávání je. Plná
+chain-of-trust validace v této SDK by proto znamenala natrvalo bundlovat a
+udržovat trust anchor třetí strany, kterou EET protokol nijak neřídí (a
+intermediate certifikáty se běžně obměňují v řádu let — viz `06/2022` v
+názvu). K tomu by přibyla ještě revokace (CRL/OCSP na straně I.CA), která
+vyžaduje síťové volání a rozhodnutí, jak se zachovat při jeho výpadku — a to
+uvnitř funkce, která je dnes čistě kryptografická a synchronní. Právě tahle
+oblast (validace certifikátových řetězců) je notoricky náchylná k subtilním
+chybám, takže napůl hotová implementace by byla horší než jasně deklarovaný
+pinning. Komunikační kanál je navíc už chráněný povinným HTTPS (TLS 1.2+, EV
+certifikát) — podpis odpovědi je z hlediska identity endpointu jen dodatečná
+vrstva, ne jediná obrana.
 
 Adresář [`caeet/`](./caeet) obsahuje kořenový a podřízený CA certifikát
 neprodukčního prostředí (playground) — použijte je jen jako testovací trust
