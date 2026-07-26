@@ -549,7 +549,17 @@ typecheck, ne až běhová validace.
 ## Opakované odeslání
 
 SDK **neprovádí žádné automatické opakování ani perzistentní frontu**.
-Rozhoduje o tom aplikace. Při opakovaném odeslání téže tržby (např. po
+Není to opomenutí: server nededukuje podle `uuid_zpravy` ani podle obchodní
+n-tice tržby (viz kapitola 4 specifikace) — každé odeslání, i duplicitní,
+dostane vlastní POK. Po `EetNetworkError`/`EetTimeoutError` navíc není jisté,
+zda zpráva k serveru vůbec nedorazila, nebo dorazila a jen se ztratila
+odpověď. Slepé automatické zopakování by tak mohlo tržbu nahlásit dvakrát;
+zda a kdy odeslání opakovat je proto rozhodnutí aplikace, která zná kontext
+(vydanou účtenku, vlastní frontu, lhůty), ne SDK. Přesné chování serveru
+u duplicitního hlášení se aktuálně ověřuje e-mailovou komunikací se správcem
+daně; až budou závěry k dispozici, tato sekce se podle nich upřesní.
+
+Při opakovaném odeslání téže tržby (např. po
 `EetNetworkError`/`EetTimeoutError` nebo `-1`/dočasné technické chybě):
 
 - vygenerujte **nové** `uuid_zpravy` (nepředávejte staré `uuid`),
