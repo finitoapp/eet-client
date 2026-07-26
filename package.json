@@ -1,7 +1,7 @@
 {
   "name": "@finitoapp/eet-client",
   "version": "0.1.0",
-  "description": "Low-level TypeScript SDK for Elektronická evidence tržeb 2.0.",
+  "description": "Low-level TypeScript SDK for EET (Elektronická evidence tržeb) 2.0.",
   "keywords": [
     "eet",
     "elektronicka-evidence-trzeb",
