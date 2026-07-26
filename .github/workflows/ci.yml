@@ -58,7 +58,9 @@ jobs:
       - if: matrix.runtime == 'node'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          # Pinned to the `engines.node` floor (not the current LTS) — CI should catch a
+          # regression that only breaks the minimum supported version.
+          node-version: "22.18.0"
       - if: matrix.runtime == 'deno'
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
         with:
