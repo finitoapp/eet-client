@@ -21,5 +21,5 @@ export default defineConfig({
   // version with tsdown's "baseline-widely-available" browser set (Chrome/Edge 111+, Firefox
   // 114+, Safari/iOS 16.4+) as a concrete stand-in for README's "any modern browser".
   platform: "node",
-  target: ["node24", "baseline-widely-available"],
+  target: ["node22", "baseline-widely-available"],
 });

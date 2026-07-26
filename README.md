@@ -55,7 +55,7 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 
 | Runtime      | Podpora                                                                 |
 | ------------ | ------------------------------------------------------------------------ |
-| **Node.js**  | 24+ (viz `engines.node`)                                                  |
+| **Node.js**  | 22.18+ (viz `engines.node`)                                               |
 | **Bun**      | aktuální stabilní verze                                                   |
 | **Deno**     | aktuální stabilní verze                                                   |
 | **Prohlížeč** | libovolný moderní, s `crypto.subtle` — viz [Použití v prohlížeči](#použití-v-prohlížeči) |
