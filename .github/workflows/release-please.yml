@@ -1,0 +1,26 @@
+name: Release Please
+
+# Maintains a standing "release PR" that bumps package.json/CHANGELOG.md from conventional
+# commits merged to main. Merging that PR is what creates the vX.Y.Z tag + GitHub Release,
+# which in turn triggers release.yml (build/check + npm publish) — pushing regular commits to
+# main only updates the pending PR, it never releases anything by itself.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      # Needs a PAT (RELEASE_PLEASE_TOKEN), not the default GITHUB_TOKEN: GitHub does not fire
+      # downstream workflow triggers (like release.yml's `release: published`) for releases
+      # created with the default token, so npm publish would never run.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
