@@ -45,6 +45,8 @@ jobs:
       - run: bun run check
       # Runs the build via the `precheck:package` hook, then lints the packed output with publint.
       - run: bun run check:package
+      # Auth is via npm trusted publishing (OIDC) using the `id-token: write` permission above —
+      # no NPM_TOKEN/NODE_AUTH_TOKEN needed, npm exchanges the GitHub Actions OIDC token for a
+      # short-lived publish token as long as this exact workflow file/repo/ref is registered as
+      # the package's trusted publisher on npmjs.com.
       - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
