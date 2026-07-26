@@ -200,9 +200,11 @@ certifikátu do formátu, který si `signer` zvolí, je na integrátorovi (viz
 
 Než bude mít `signer` co podepisovat, potřebujete od GFŘ vydaný **pokladní
 certifikát** — tato SDK ho nevydává ani negeneruje, pouze s ním pracuje.
-Podle dokumentu [„Přístupové a provozní informace — produkční
+Podle dokumentů [„Přístupové a provozní informace — produkční
 prostředí“](./docs/reference/eet-2.0/EET_pristupove_provozni_informace_produkce_v1.md)
-(kap. 3.1) probíhá vydání takto:
+(kap. 3.1) a [„CA EET 2 — Postupy získání pokladního
+certifikátu“](./docs/reference/eet-2.0/CAEET_postupy_zadost_certifikat_v2.md)
+probíhá vydání takto:
 
 1. **Portál.** Obslužný portál certifikační autority (CA EET 2) je dostupný
    přes portál MOJE daně, v aplikaci **Daňová informační schránka plus
@@ -222,26 +224,28 @@ prostředí“](./docs/reference/eet-2.0/EET_pristupove_provozni_informace_produ
    apod.), CRL na `https://caeet.gov.cz/crldp` se aktualizuje do 1 minuty;
    běžná frekvence vydávání CRL je jinak každých 8 hodin.
 
-Zdrojový dokument bohužel neuvádí, v jakém technickém formátu DIS+ certifikát
-vydává — tj. jestli si v portálu nahrajete vlastní CSR (žádost o certifikát s
-veřejným klíčem, kdy privátní klíč vznikne a zůstane jen u vás), nebo jestli
-portál klíčový pár vygeneruje sám a vydá vám rovnou balíček PKCS#12
-(certifikát + privátní klíč, chráněné heslem) — tak, jak to GFŘ dělá u
-sdílených testovacích certifikátů playgroundu (viz [`caeet/`](./caeet)). Podle
-toho, co vám DIS+ nabídne, pokračujte:
+CA EET klíčový pár i certifikát generuje sama, bezpečně a zcela mimo pokladní
+systém a prohlížeč — v DIS+ tedy nenahráváte vlastní CSR. Vydaný pokladní
+certifikát včetně soukromého klíče si stáhnete rovnou jako balíček PKCS#12
+(`.p12`/`.pfx`), chráněný heslem, které dostanete taktéž v aplikaci Správa
+pokladních certifikátů EET — stejně jako u sdílených testovacích certifikátů
+playgroundu (viz [`caeet/`](./caeet)). Soubor je ke stažení nejdéle 30 dní od
+vydání certifikátu, poté je v systému zrušen a už není možné jej znovu
+získat. Pokračujte podle sekce [Nastavení klíče z reálného pokladního
+certifikátu (.p12/PFX)](#nastavení-klíče-z-reálného-pokladního-certifikátu-p12pfx)
+níže.
 
-- **Dostanete PKCS#12 (`.p12`/`.pfx`)** → postupujte podle sekce
-  [Nastavení klíče z reálného pokladního certifikátu (.p12/PFX)](#nastavení-klíče-z-reálného-pokladního-certifikátu-p12pfx)
-  níže.
-- **Portál umožní nahrát vlastní CSR** → vygenerujte klíčový pár lokálně
-  (např. `crypto.subtle.generateKey` s `extractable: false`, nebo v HSM/KMS),
-  z veřejného klíče sestavte PKCS#10 CSR s `CN` = vaše EIČ a nahrajte jen
-  CSR — privátní klíč portálu (a tedy ani síti) nikdy neopustí vaše prostředí.
-  Vrácený DER certifikát pak předáte přímo do `createCryptoKeySigner` spolu s
-  lokálně drženým `CryptoKey`, bez jakékoli konverze `.p12`.
-
-Pokud si nejste jistí, který postup DIS+ v danou chvíli nabízí, ověřte to
-přímo v portálu nebo se obraťte na podporu EET (<epodpora@fs.gov.cz>).
+**Obnova.** Certifikát lze obnovit stejným ručním postupem v DIS+, nebo
+automatizovaně z pokladního systému přes samostatné REST API CA EET
+(JWT-autentizované endpointy `/request/renew`, `/request/{reqId}/status`,
+`/request/{reqId}/claim-download`, `/request/{reqId}/ack-download` — viz
+[„Postupy získání pokladního
+certifikátu“](./docs/reference/eet-2.0/CAEET_postupy_zadost_certifikat_v2.md);
+doporučená lhůta je 2–3 týdny před koncem platnosti obnovovaného certifikátu).
+I obnova vrací certifikát stejnou cestou jako PKCS#12. Tato SDK obnovovací
+flow neimplementuje — jde o samostatné API nezávislé na EET SOAP rozhraní pro
+odesílání tržeb, mimo rozsah čistě protokolové vrstvy (viz [Rozsah první
+verze](#rozsah-první-verze)).
 
 ### Nastavení klíče z reálného pokladního certifikátu (.p12/PFX)
 
@@ -698,8 +702,11 @@ mimo předdefinovaných/číselných odkazů jsou odmítnuty) a před vrácením
 ## Rozsah první verze
 
 Není součástí: automatické retry/fronta, doménové workflow pokladny/účtenky,
-načítání PEM/PFX v veřejném API, produkční endpoint (dokud jej GFŘ oficiálně
-nezveřejní — vždy jej dodá integrátor konfigurací).
+načítání PEM/PFX v veřejném API, automatizovaná obnova pokladního certifikátu
+přes API CA EET (viz [Získání produkčního pokladního
+certifikátu](#získání-produkčního-pokladního-certifikátu)), produkční
+endpoint (dokud jej GFŘ oficiálně nezveřejní — vždy jej dodá integrátor
+konfigurací).
 
 ## Verzování
 
