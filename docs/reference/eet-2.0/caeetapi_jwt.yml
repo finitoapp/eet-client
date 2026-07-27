@@ -1,0 +1,530 @@
+openapi: 3.1.0
+info:
+  version: 1.0.0
+  title: CAEET API - JWT Token
+  description: API pro CAEET
+servers:
+- url: https://test.caeet.gov.cz/api
+  description: Testovací prostředí
+- url: https://zkus.caeet.gov.cz/api
+  description: Zkušební prostředí
+- url: https://caeet.gov.cz/api
+  description: Produkční prostředí
+tags:
+- name: request
+  description: Žádost o certifikát
+paths:
+  /request/renew:
+    post:
+      summary: Podání žádosti o následný certifikát
+      description: |
+        Podání žádosti o následný certifikát.
+
+        Endpoint je určen pro automatizované nebo integrační volání autorizované pomocí
+        JWT tokenu v hlavičce Authorization. Token musí být podepsán obnovovaným certifikátem
+        a musí splňovat profil popsaný ve `bearerJwtRs256`.
+
+        Obnovovaný certifikát musí být v okamžiku volání platný.
+        Při úspěšném zpracování endpoint vrací identifikátor založené žádosti `reqId`.
+
+        Stav žádosti je následně možné zjišťovat přes `/request/{reqId}/status`.
+      tags:
+      - request
+      operationId: requestRenewPost
+      responses:
+        '201':
+          description: Žádost o certifikát přijata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestResDTO'
+        '400':
+          $ref: '#/components/responses/400-format'
+        '401':
+          $ref: '#/components/responses/401-unauthorized'
+        '429':
+          $ref: '#/components/responses/429-tooManyRequests'
+        '500':
+          $ref: '#/components/responses/500-internal'
+      security:
+      - bearerJwtRs256: []
+  /request/{reqId}/status:
+    get:
+      summary: Získání stavu žádosti o certifikát
+      description: |
+        Získání aktuálního stavu žádosti o certifikát.
+
+        Endpoint vrací stav žádosti identifikované parametrem `reqId`.
+        Odpověď používá schéma `RequestStatusDTO`, které rozlišuje jednotlivé stavy
+        `INPROCESS`, `ISSUED`, `DELIVERING`, `FINISHED` a `REJECTED`.
+
+        Pokud je žádost ve stavu `INPROCESS`, odpověď obsahuje doporučený interval
+        pro další polling v poli `pollAfterSeconds` a současně i v hlavičce `Retry-After`.
+
+        Endpoint lze volat buď v UI režimu pomocí session cookie, nebo integračně pomocí JWT.
+        Při autentizaci pomocí JWT musí být podpisový certifikát platný.
+      tags:
+      - request
+      operationId: requestStatusGet
+      parameters:
+      - $ref: '#/components/parameters/ReqId'
+      responses:
+        '200':
+          description: Stav žádosti o certifikát
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfterSeconds'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestStatusDTO'
+        '400':
+          $ref: '#/components/responses/400-format'
+        '401':
+          $ref: '#/components/responses/401-unauthorized'
+        '404':
+          $ref: '#/components/responses/404-notFound'
+        '500':
+          $ref: '#/components/responses/500-internal'
+      security:
+      - bearerJwtRs256: []
+  /request/{reqId}/claim-download:
+    post:
+      summary: Stažení PKCS#12 a hesla
+      description: "Stažení vydaného certifikátu ve formátu PKCS#12 a hesla k jeho otevření.\n\nEndpoint je možné volat pouze pro žádost ve stavu `ISSUED` nebo `DELIVERING`.\nStav `ISSUED` znamená, že certifikát je vydán a připraven k prvnímu stažení.\nStav `DELIVERING` znamená, že PKCS#12 a heslo již byly klientovi zpřístupněny ke stažení,\nale převzetí dosud nebylo potvrzeno. V tomto stavu je možné data znovu získat až do\npotvrzení přes `/request/{reqId}/ack-download`.\n\nPři úspěšném volání vrací endpoint objekt `Pkcs12DTO` obsahující PKCS#12 v base64,\nheslo pro jeho otevření a metadata vydaného certifikátu.\n\nPokud nedojde ke stažení PKCS#12 do 30 dnů od vydání certifikátu server odstraní \ndočasně držená data pro stažení a žádost přejde do ukončeného stavu workflow. \nPo uplynutí této lhůty není možné PKCS#12 a heslo znovu\nzískat přes `/request/{reqId}/claim-download`.\n\nEndpoint je dostupný jak pro UI klienty (session cookie + CSRF token), tak pro\nintegrační volání pomocí JWT.\n\
+        \nVrácené údaje jsou citlivé. Klient by je neměl ukládat do cache ani logů.\nPo úspěšném převzetí má klient potvrdit dokončení přes `/request/{reqId}/ack-download`.\n"
+      tags:
+      - request
+      operationId: requestClaimDownloadPost
+      parameters:
+      - $ref: '#/components/parameters/ReqId'
+      responses:
+        '200':
+          description: Certifikát a heslo vydány
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pkcs12DTO'
+          headers:
+            Cache-Control:
+              schema:
+                example: no-store, no-cache, must-revalidate, max-age=0, private
+                type: string
+            Pragma:
+              schema:
+                example: no-cache
+                type: string
+            Expires:
+              schema:
+                example: '0'
+                type: string
+        '400':
+          $ref: '#/components/responses/400-format'
+        '401':
+          $ref: '#/components/responses/401-unauthorized'
+        '404':
+          $ref: '#/components/responses/404-notFound'
+        '409':
+          $ref: '#/components/responses/409-conflict'
+        '500':
+          $ref: '#/components/responses/500-internal'
+      security:
+      - bearerJwtRs256: []
+  /request/{reqId}/ack-download:
+    post:
+      summary: Potvrzení stažení PKCS#12
+      description: "Potvrzení úspěšného převzetí PKCS#12 a hesla klientem.\n\nEndpoint je možné volat pouze pro žádost ve stavu `DELIVERING`.\nStav `DELIVERING` znamená, že PKCS#12 a heslo již byly klientovi zpřístupněny ke stažení,\nale převzetí dosud nebylo potvrzeno.\n\nPo úspěšném potvrzení server odstraní dočasně držená data pro stažení a žádost přejde\ndo ukončeného stavu workflow. Po tomto potvrzení již není možné PKCS#12 a heslo znovu\nzískat přes `/request/{reqId}/claim-download`.\n\nPokud nedojde k potvrzení stažení PKCS#12 do 30 dnů od vydání certifikátu server odstraní \ndočasně držená data pro stažení a žádost přejde do ukončeného stavu workflow. \nPo uplynutí této lhůty není možné PKCS#12 a heslo znovu\nzískat přes `/request/{reqId}/claim-download`.\n\nEndpoint je dostupný jak pro UI klienty (session cookie + CSRF token), tak pro\nintegrační volání pomocí JWT.\n\nTento endpoint vrací `204 No Content`.\n"
+      tags:
+      - request
+      operationId: requestAckDownloadPost
+      parameters:
+      - $ref: '#/components/parameters/ReqId'
+      responses:
+        '204':
+          description: Pkcs12 a heslo odstraněny
+        '400':
+          $ref: '#/components/responses/400-format'
+        '401':
+          $ref: '#/components/responses/401-unauthorized'
+        '404':
+          $ref: '#/components/responses/404-notFound'
+        '409':
+          $ref: '#/components/responses/409-conflict'
+        '500':
+          $ref: '#/components/responses/500-internal'
+      security:
+      - bearerJwtRs256: []
+  /request/not-finished:
+    get:
+      summary: Získá všechny neukončené žádosti pro EIČ
+      description: |
+        Získání všech neukončených žádostí o certifikát pro aktuální EIČ obnovovaného certifikátu.
+
+        Endpoint vrací seznam identifikátorů žádostí `reqId`, které jsou ve stavech
+        `INPROCESS`, `ISSUED` nebo `DELIVERING`.
+
+        Endpoint lze volat buď v UI režimu pomocí session cookie, nebo integračně pomocí JWT.
+        Při autentizaci pomocí JWT musí být podpisový certifikát platný.
+
+        Detail stavu jednotlivých žádostí je možné následně získat přes
+        `/request/{reqId}/status`.
+      tags:
+      - request
+      operationId: requestNotFinishedGet
+      responses:
+        '200':
+          description: Přehled neukončených žádostí o certifikát
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReqIdListDTO'
+        '401':
+          $ref: '#/components/responses/401-unauthorized'
+        '500':
+          $ref: '#/components/responses/500-internal'
+      security:
+      - bearerJwtRs256: []
+components:
+  securitySchemes:
+    bearerJwtRs256:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Očekávaný formát tokenu:
+          <base64url(protected-header)>.<base64url(payload)>.<base64url(signature)>
+
+        Požadavky na JOSE protected header:
+        - alg: RS256
+        - typ: JWT (doporučeno)
+        - x5t#S256: base64url(SHA-256(DER(X.509 certifikát)))
+
+        Požadavky na payload:
+        - JWT payload musí být JSON objekt
+        - minimální podporovaný payload je {}
+
+        Poznámka:
+        - Header x5c se nepoužívá; klient neposílá celý certifikát v tokenu.
+        - Certifikát se identifikuje výhradně přes x5t#S256.
+      x-jwt-profile:
+        serialization: JWS Compact
+        requiredJoseHeader:
+          alg:
+            const: RS256
+          typ:
+            const: JWT
+            required: false
+          x5t#S256:
+            type: string
+            description: base64url(SHA-256(DER(X.509 certifikát)))
+        payload:
+          type: object
+          description: JWT Claims Set; minimální podporovaná hodnota je {}
+          additionalProperties: true
+  schemas:
+    RequestRejectedDTO:
+      type: object
+      additionalProperties: false
+      required:
+      - reqId
+      - state
+      - rejectedReason
+      properties:
+        reqId:
+          $ref: '#/components/schemas/ReqId'
+        state:
+          type: string
+          const: REJECTED
+          description: |
+            Stav žádosti o certifikát.
+            * REJECTED - žádost zamítnuta, součástí odpovědi je důvod zamítnutí
+          example: REJECTED
+        rejectedReason:
+          type: string
+          description: Důvod zamítnutí žádosti.
+          example: Selhání kontroly parametrů žádosti
+    RequestDeliveringDTO:
+      type: object
+      additionalProperties: false
+      required:
+      - reqId
+      - state
+      properties:
+        reqId:
+          $ref: '#/components/schemas/ReqId'
+        state:
+          type: string
+          const: DELIVERING
+          description: |
+            Stav žádosti o certifikát.
+            * DELIVERING - PKCS#12 a heslo byly klientovi zpřístupněny ke stažení, ale převzetí dosud nebylo potvrzeno
+          example: DELIVERING
+    RequestIssuedDTO:
+      type: object
+      additionalProperties: false
+      required:
+      - reqId
+      - state
+      properties:
+        reqId:
+          $ref: '#/components/schemas/ReqId'
+        state:
+          type: string
+          const: ISSUED
+          description: |
+            Stav žádosti o certifikát.
+            * ISSUED - certifikát vydán a PKCS#12 je připravena ke stažení
+          example: ISSUED
+    RequestFinishedDTO:
+      type: object
+      additionalProperties: false
+      required:
+      - reqId
+      - state
+      properties:
+        reqId:
+          $ref: '#/components/schemas/ReqId'
+        state:
+          type: string
+          const: FINISHED
+          description: |
+            Stav žádosti o certifikát.
+            * FINISHED - žádost ukončena, PKCS#12 byla již stažena
+          example: FINISHED
+    CertificateDTO:
+      type: object
+      unevaluatedProperties: false
+      required:
+      - sn
+      - validFrom
+      - validTo
+      - state
+      properties:
+        sn:
+          description: Sériové číslo
+          example: 24961511666821687692
+          type: string
+          pattern: ^\d+$
+        validFrom:
+          description: Datum a čas začátku platnosti
+          example: 2026-01-04 11:13:33+00:00
+          type: string
+          format: date-time
+        validTo:
+          description: Datum a čas konce platnosti
+          example: 2027-01-04 11:13:33+00:00
+          type: string
+          format: date-time
+        state:
+          description: Stav certifikátu
+          example: VALID
+          type: string
+          enum:
+          - VALID
+          - EXPIRED
+          - REVOKED
+          - ON_CRL
+        revocationTime:
+          description: Datum a čas zneplatnění. Uveden pouze pro stavy REVOKED a ON_CRL
+          example: 2026-02-04 13:13:33+00:00
+          type: string
+          format: date-time
+        description:
+          description: Poznámka
+          example: Testovací certifikát
+          type: string
+        email:
+          description: Email pro zasílání notifikací
+          example: noreply@gov.cz
+          type: string
+          format: email
+    ReqId:
+      type: string
+      format: uuid
+      description: ID žádosti o certifikát
+      example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+    RequestStatusDTO:
+      oneOf:
+      - $ref: '#/components/schemas/RequestInProcessDTO'
+      - $ref: '#/components/schemas/RequestIssuedDTO'
+      - $ref: '#/components/schemas/RequestDeliveringDTO'
+      - $ref: '#/components/schemas/RequestFinishedDTO'
+      - $ref: '#/components/schemas/RequestRejectedDTO'
+      discriminator:
+        propertyName: state
+        mapping:
+          INPROCESS: '#/components/schemas/RequestInProcessDTO'
+          ISSUED: '#/components/schemas/RequestIssuedDTO'
+          DELIVERING: '#/components/schemas/RequestDeliveringDTO'
+          FINISHED: '#/components/schemas/RequestFinishedDTO'
+          REJECTED: '#/components/schemas/RequestRejectedDTO'
+    Pkcs12DTO:
+      type: object
+      additionalProperties: false
+      required:
+      - pkcs12
+      - password
+      - certificate
+      properties:
+        pkcs12:
+          type: string
+          format: byte
+          description: PKCS#12 v base64
+        password:
+          type: string
+          description: Heslo k otevření PKCS#12
+          pattern: ^[A-Za-z0-9]{8}$
+          example: ABcd1234
+        certificate:
+          $ref: '#/components/schemas/CertificateDTO'
+    ArrayResponseDTO:
+      type: object
+      unevaluatedProperties: false
+      required:
+      - count
+      - data
+      properties:
+        count:
+          type: integer
+          minimum: 0
+          description: Počet vrácených položek v objektu data
+          example: 1
+    ErrorDTO:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        additionalInfo:
+          type: string
+    RequestInProcessDTO:
+      type: object
+      additionalProperties: false
+      required:
+      - reqId
+      - state
+      - pollAfterSeconds
+      properties:
+        reqId:
+          $ref: '#/components/schemas/ReqId'
+        state:
+          type: string
+          const: INPROCESS
+          description: |
+            Stav žádosti o certifikát.
+            * INPROCESS - Žádost v běhu, dosud nevydán certifikát
+          example: INPROCESS
+        pollAfterSeconds:
+          type: integer
+          minimum: 1
+          description: Po kolika sekundách API doporučuje se znovu zjišťovat stav žádosti
+          example: 2
+    ReqIdListDTO:
+      allOf:
+      - $ref: '#/components/schemas/ArrayResponseDTO'
+      - type: object
+        properties:
+          data:
+            type: array
+            default: []
+            items:
+              $ref: '#/components/schemas/ReqId'
+    RequestResDTO:
+      type: object
+      additionalProperties: false
+      required:
+      - reqId
+      properties:
+        reqId:
+          $ref: '#/components/schemas/ReqId'
+  responses:
+    400-format:
+      description: |
+        * ErrInvalidInput - Chybný formát vstupních dat
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDTO'
+          example:
+            code: 1
+            message: Invalid input data.
+            additionalInfo: Some more info.
+    409-conflict:
+      description: |
+        * ErrorConflict - Objekt je v stavu, pro který nemůže být daný endpoint použit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDTO'
+          example:
+            code: 5
+            message: Conflict.
+            additionalInfo: Some more info.
+    429-tooManyRequests:
+      description: |
+        * ErrorTooManyRequests - Příliš mnoho požadavků v daném čase.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDTO'
+          example:
+            code: 6
+            message: Too many requests.
+            additionalInfo: Some more info.
+    401-unauthorized:
+      description: |
+        * ErrorUnauthorized - Neúspěšná autentizace nebo chybějící přihlašovací údaje.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDTO'
+          example:
+            code: 2
+            message: Unauthorized access.
+            additionalInfo: Some more info.
+    404-notFound:
+      description: |
+        * ErrorNotFound - Požadovaný objekt neexistuje.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDTO'
+          example:
+            code: 4
+            message: Unknown object.
+            additionalInfo: Some more info.
+    500-internal:
+      description: |
+        * Error - Chyba serveru.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDTO'
+          example:
+            code: 99
+            message: Internal error.
+            additionalInfo: Some more info.
+  parameters:
+    ReqId:
+      name: reqId
+      in: path
+      description: ID žádosti
+      required: true
+      example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+      schema:
+        type: string
+        format: uuid
+  headers:
+    RetryAfterSeconds:
+      description: |
+        Doporučený počet sekund do dalšího dotazu na stav.
+        Posílá se pouze pokud je stav INPROCESS.
+      schema:
+        type: integer
+        minimum: 1
+      example: 2

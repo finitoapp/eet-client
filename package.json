@@ -66,6 +66,16 @@
         "types": "./dist/builtin.d.cts",
         "default": "./dist/builtin.cjs"
       }
+    },
+    "./caeet-renewal": {
+      "import": {
+        "types": "./dist/caeet-renewal.d.mts",
+        "default": "./dist/caeet-renewal.mjs"
+      },
+      "require": {
+        "types": "./dist/caeet-renewal.d.cts",
+        "default": "./dist/caeet-renewal.cjs"
+      }
     }
   },
   "scripts": {

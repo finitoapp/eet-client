@@ -62,3 +62,16 @@ export function decodeBase64(input: string): Uint8Array {
   }
   return new Uint8Array(bytes);
 }
+
+/**
+ * Base64url (RFC 4648 §5) variant used by JWT (RFC 7515 §2): `+`/`/` replaced with `-`/`_`, and
+ * padding omitted rather than kept, on top of the same alphabet/bit-packing as {@link encodeBase64}.
+ */
+export function encodeBase64Url(bytes: Uint8Array): string {
+  return encodeBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Decodes base64url (RFC 4648 §5) input, padding optional, via {@link decodeBase64}. */
+export function decodeBase64Url(input: string): Uint8Array {
+  return decodeBase64(input.replace(/-/g, "+").replace(/_/g, "/"));
+}

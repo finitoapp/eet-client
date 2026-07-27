@@ -1,4 +1,4 @@
-import { defineError } from "../error.ts";
+import { defineError, isTypedError } from "../error.ts";
 
 /** Shared optional context carried by most SDK errors. */
 export interface EetErrorContext {
@@ -99,10 +99,5 @@ export function isEetError<T extends EetError["type"]>(
   error: unknown,
   type: T,
 ): error is Extract<EetError, { type: T }> {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "type" in error &&
-    (error as { type: unknown }).type === type
-  );
+  return isTypedError<EetError, T>(error, type);
 }

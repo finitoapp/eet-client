@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { decodeBase64, encodeBase64 } from "./base64.ts";
+import { decodeBase64, decodeBase64Url, encodeBase64, encodeBase64Url } from "./base64.ts";
 
 describe("encodeBase64 / decodeBase64 round trip", () => {
   test("round-trips a 0-byte input", () => {
@@ -72,5 +72,29 @@ describe("decodeBase64 rejects malformed input", () => {
     // sequence, and must be rejected rather than silently decoded to the same 0xFF.
     assert.deepStrictEqual(decodeBase64("/w"), new Uint8Array([0xff]));
     assert.throws(() => decodeBase64("/z"));
+  });
+});
+
+describe("encodeBase64Url / decodeBase64Url", () => {
+  test("uses '-'/'_' instead of '+'/'/' and omits padding", () => {
+    const bytes = new Uint8Array([0xff, 0xff, 0xfe]);
+    assert.strictEqual(encodeBase64(bytes), "///+");
+    const url = encodeBase64Url(bytes);
+    assert.ok(!url.includes("+"));
+    assert.ok(!url.includes("/"));
+    assert.ok(!url.includes("="));
+    assert.deepStrictEqual(decodeBase64Url(url), bytes);
+  });
+
+  test("round-trips a 1-byte input that would otherwise need '==' padding", () => {
+    const bytes = new Uint8Array([0xff]);
+    const url = encodeBase64Url(bytes);
+    assert.strictEqual(url, "_w");
+    assert.deepStrictEqual(decodeBase64Url(url), bytes);
+  });
+
+  test("decodeBase64Url also accepts standard-padded base64url input", () => {
+    const bytes = new Uint8Array([0xff]);
+    assert.deepStrictEqual(decodeBase64Url("_w=="), bytes);
   });
 });

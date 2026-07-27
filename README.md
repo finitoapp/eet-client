@@ -44,6 +44,7 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 - [Bezpečné nakládání s certifikáty](#bezpečné-nakládání-s-certifikáty)
   - [Model důvěry `createCryptoKeySigner`/`createCryptoKeyResponseSignatureVerifier`](#model-důvěry-createcryptokeysignercreatecryptokeyresponsesignatureverifier)
   - [Opt-in integrační testy s `caeet/*.p12`](#opt-in-integrační-testy-s-caeetp12)
+- [Automatizovaná obnova pokladního certifikátu (`@finitoapp/eet-client/caeet-renewal`) — experimentální](#automatizovaná-obnova-pokladního-certifikátu-finitoappeet-clientcaeet-renewal)
 - [Použití v prohlížeči](#použití-v-prohlížeči)
 - [Architektura](#architektura)
 - [Rozsah první verze](#rozsah-první-verze)
@@ -237,15 +238,11 @@ níže.
 
 **Obnova.** Certifikát lze obnovit stejným ručním postupem v DIS+, nebo
 automatizovaně z pokladního systému přes samostatné REST API CA EET
-(JWT-autentizované endpointy `/request/renew`, `/request/{reqId}/status`,
-`/request/{reqId}/claim-download`, `/request/{reqId}/ack-download` — viz
-[„Postupy získání pokladního
-certifikátu“](./docs/reference/eet-2.0/CAEET_postupy_zadost_certifikat_v2.md);
-doporučená lhůta je 2–3 týdny před koncem platnosti obnovovaného certifikátu).
-I obnova vrací certifikát stejnou cestou jako PKCS#12. Tato SDK obnovovací
-flow neimplementuje — jde o samostatné API nezávislé na EET SOAP rozhraní pro
-odesílání tržeb, mimo rozsah čistě protokolové vrstvy (viz [Rozsah první
-verze](#rozsah-první-verze)).
+(doporučená lhůta je 2–3 týdny před koncem platnosti obnovovaného
+certifikátu) — viz [Automatizovaná obnova pokladního
+certifikátu](#automatizovaná-obnova-pokladního-certifikátu-finitoappeet-clientcaeet-renewal)
+níže pro volitelný klient tohoto API, který je součástí této SDK jako
+samostatný podcestový import (**experimentální**, viz varování v té sekci).
 
 ### Nastavení klíče z reálného pokladního certifikátu (.p12/PFX)
 
@@ -649,6 +646,117 @@ bun run test:integration:live      # EET_TEST_LIVE_PLAYGROUND=1 bun test test/in
 bun run test:integration:live-browser  # EET_TEST_LIVE_PLAYGROUND_BROWSER=1 bun test test/integration
 ```
 
+## Automatizovaná obnova pokladního certifikátu (`@finitoapp/eet-client/caeet-renewal`)
+
+**Experimentální — zatím neověřeno proti žádnému skutečnému prostředí.**
+`docs/reference/eet-2.0/caeetapi_jwt.yml` (OpenAPI popis tohoto API) jmenuje tři prostředí —
+`test.caeet.gov.cz`, `zkus.caeet.gov.cz` a produkční `caeet.gov.cz` — ale k
+26. 7. 2026 žádné z nich nemá veřejný DNS záznam (ověřeno přímo dotazem na
+`8.8.8.8`; zóna `caeet.gov.cz` je delegovaná, ale bez `A`/`AAAA`/`CNAME`
+záznamu na kterékoli z těchto jmen). Na rozdíl od EET SOAP odesílání tržby,
+kde je playground (`pg.trzbyeet.gov.cz`) reálně dostupný a tato SDK proti
+němu má opt-in integrační testy (viz [Opt-in integrační testy
+s `caeet/*.p12`](#opt-in-integrační-testy-s-caeetp12)), tento modul **nebyl
+ověřen jediným skutečným HTTP voláním** — implementace vychází čistě z
+referenčního dokumentu a `docs/reference/eet-2.0/caeetapi_jwt.yml`. Očekávejte, že se po prvním
+reálném ověření proti nasazenému prostředí objeví breaking changes (chybný
+odhad tvaru chyby, HTTP chování, apod.) — nezávisle na verzování zbytku SDK
+(viz [Verzování](#verzování)).
+
+Volitelný podcestový modul pro automatizovanou obnovu pokladního certifikátu
+přes REST API CA EET popsané v [„CA EET 2 — Postupy získání pokladního
+certifikátu“](./docs/reference/eet-2.0/CAEET_postupy_zadost_certifikat_v2.md).
+Jde o úplně jiný protokol než EET SOAP odeslání tržby — JWT/REST vůči CA EET,
+ne SOAP/XMLDSig vůči `trzbyeet.gov.cz` — hlavní vstupní bod
+`@finitoapp/eet-client` tento modul nikdy neimportuje.
+
+```ts
+import { createCaeetRenewalClient } from "@finitoapp/eet-client/caeet-renewal";
+
+const renewal = createCaeetRenewalClient({
+  baseUrl: "https://caeet.example/api", // viz "Neznámé/nepublikované" níže
+  signer, // podepisuje JWT certifikátem, který se obnovuje — stejný EetSigner jako pro submit()
+});
+
+const request = await renewal.requestRenewal();
+if (!request.ok) throw request.error;
+
+let status = await renewal.getStatus(request.value.reqId);
+// INPROCESS se pozná podle přítomnosti pollAfterSeconds/retryAfterSeconds (jediná typovaná pole,
+// která tato SDK ze status odpovědi čte — viz "Neznámé/nepublikované" níže, proč nehádá pole se
+// samotným stavem).
+while (
+  status.ok &&
+  (status.value.pollAfterSeconds !== undefined || status.value.retryAfterSeconds !== undefined)
+) {
+  const delaySeconds = status.value.pollAfterSeconds ?? status.value.retryAfterSeconds ?? 30;
+  await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+  status = await renewal.getStatus(request.value.reqId);
+}
+if (!status.ok) throw status.error;
+// status.value.raw je teď RequestStatusDTO mimo INPROCESS — ISSUED, DELIVERING, FINISHED, nebo
+// REJECTED. Tato SDK obsah nehádá (viz níže), takže si stav ověřte sami dle skutečné odpovědi
+// nebo caeetapi_jwt.yml; u REJECTED nepokračujte na claimPkcs12() níže (podle referenčního
+// dokumentu je platný jen pro ISSUED/DELIVERING).
+
+const claim = await renewal.claimPkcs12(request.value.reqId);
+if (!claim.ok) throw claim.error;
+// claim.value.raw je Pkcs12DTO (PKCS#12 v base64 + heslo) — po bezpečném
+// uložení potvrďte stažení, viz "Neznámé/nepublikované" níže.
+await renewal.ackDownload(request.value.reqId);
+```
+
+`buildCaeetAuthorizationJwt(signer)` (export tohoto modulu) sestaví
+autentizační JWT přesně dle specifikace — hlavička `alg: RS256`, `typ: JWT`,
+`x5t#S256` (otisk certifikátu), minimální payload `exp`/`iat` — a podepíše ji
+přes `signer.sign()`. `EetSigner` použitý pro `submit()` tak jde použít i tady
+beze změny: RS256 je stejné RSASSA-PKCS1-v1_5/SHA-256 podepisování, které SDK
+už vyžaduje pro `<Trzba>`.
+
+Platnost tokenu (`exp - iat`) lze nastavit volitelnou položkou `ttlSeconds`
+v options klienta — výchozí je 60 s, server odmítá cokoliv nad 300 s. Zvyšte
+ji, pokud `signer.sign()` (např. vzdálený HSM/KMS) spolu se síťovým zpožděním
+k serveru CA EET může trvat blízko výchozí hranici — jinak riskujete, že
+token vyprší dřív, než server stihne požadavek ověřit.
+
+**Žádné cachování JWT mezi voláními — záměrně.** Každé volání klienta
+(`requestRenewal()`, `getStatus()`, `claimPkcs12()`, `ackDownload()`,
+`listUnfinished()`) si podepíše vlastní čerstvý token, i v rámci pollovací
+smyčky. Zvažovali jsme cache platného tokenu mezi voláními, ale zůstali jsme u
+bezstavového podepisování při každém volání: výchozí platnost tokenu
+(`ttlSeconds`, viz výše) je jen 60 s, takže cache by se v praxi často stejně
+neuplatnila dřív, než token vyprší, a přínos by tak byl nejistý vůči přidané
+komplexitě (sledování expirace, invalidace při změně `ttlSeconds`). Pokud váš
+`signer` je nákladný (např. vzdálený HSM/KMS) a víte, že server vrací krátké
+pollovací intervaly, zvažte cachování na vlastní straně nad tímto klientem.
+
+**Bez vestavěné smyčky/retry.** Stejně jako `submit()` (viz [Opakované
+odeslání](#opakované-odeslání)), ani tento modul sám nepolluje — voláte
+`getStatus()` v intervalu podle `pollAfterSeconds`/hlavičky `Retry-After`,
+dokud žádost neopustí stav `INPROCESS`, přesně podle „Příklad sekvence volání“
+ve zdrojovém dokumentu.
+
+**Neznámé/nepublikované — čtěte, než použijete:**
+
+- **`baseUrl` není nikde publikované.** Zdrojový dokument říká jen, že „URL
+  pro přístup k API jsou součástí definice API“ (souboru `docs/reference/eet-2.0/caeetapi_jwt.yml`),
+  který ale s tímto SDK není distribuovaný ani jinak veřejně dostupný — stejně
+  jako u produkčního EET SOAP endpointu musíte `baseUrl` získat a dodat sami.
+- **Přesný tvar odpovědi mimo `reqId`/`pollAfterSeconds` není publikovaný.**
+  Zdrojový dokument doslovně jmenuje jen `.reqId` (`POST /request/renew`) a
+  `.pollAfterSeconds` (`GET .../status`) — stavový výčet
+  (`INPROCESS`/`ISSUED`/`DELIVERING`/`FINISHED`/`REJECTED`) i obsah
+  `Pkcs12DTO` (PKCS#12 v base64, heslo, metadata) popisuje jen prózou, bez
+  jmen polí. Tato SDK proto tato pole nehádá: `getStatus()` vrací typovaně jen
+  `pollAfterSeconds`/`retryAfterSeconds`, zatímco `claimPkcs12()`,
+  `ackDownload()` a `listUnfinished()` vrací syrové `raw: unknown` tělo —
+  rozeberte si ho sami, jakmile budete mít reálnou odpověď nebo skutečný
+  `docs/reference/eet-2.0/caeetapi_jwt.yml`.
+
+Data vrácená z `claimPkcs12()` jsou vysoce citlivá (heslem chráněný privátní
+klíč) — nikdy je nezalogujte ani necachujte, stejná hygiena jako u
+[Bezpečné nakládání s certifikáty](#bezpečné-nakládání-s-certifikáty) výše.
+
 ## Použití v prohlížeči
 
 SDK funguje i přímo v prohlížeči — podpis přes Web Crypto (`crypto.subtle`,
@@ -702,11 +810,13 @@ mimo předdefinovaných/číselných odkazů jsou odmítnuty) a před vrácením
 ## Rozsah první verze
 
 Není součástí: automatické retry/fronta, doménové workflow pokladny/účtenky,
-načítání PEM/PFX v veřejném API, automatizovaná obnova pokladního certifikátu
-přes API CA EET (viz [Získání produkčního pokladního
-certifikátu](#získání-produkčního-pokladního-certifikátu)), produkční
-endpoint (dokud jej GFŘ oficiálně nezveřejní — vždy jej dodá integrátor
-konfigurací).
+načítání PEM/PFX v veřejném API, produkční endpoint (dokud jej GFŘ oficiálně
+nezveřejní — vždy jej dodá integrátor konfigurací). Automatizovaná obnova
+pokladního certifikátu má vlastní, samostatný podcestový klient (viz
+[Automatizovaná obnova pokladního
+certifikátu](#automatizovaná-obnova-pokladního-certifikátu-finitoappeet-clientcaeet-renewal)),
+ten je ale **experimentální** — zatím neověřený proti žádnému skutečnému
+prostředí (viz varování v té sekci).
 
 ## Verzování
 

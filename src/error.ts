@@ -27,3 +27,20 @@ export const defineError =
       type,
       ...(shape ?? {}),
     })) as ErrorFactory<TType, TShape>;
+
+/**
+ * Narrows an arbitrary caught `unknown` (or a known error union) to one member of `TError` by its
+ * `type` discriminant. Shared by every per-module `isXError` narrower (e.g. `isEetError`,
+ * `isCaeetError`) so the runtime check itself lives in one place.
+ */
+export function isTypedError<TError extends { type: string }, T extends TError["type"]>(
+  error: unknown,
+  type: T,
+): error is Extract<TError, { type: T }> {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "type" in error &&
+    (error as { type: unknown }).type === type
+  );
+}
