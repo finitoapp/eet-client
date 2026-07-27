@@ -11,7 +11,12 @@ import { canonicalizeToBytes } from "../../src/core/xml/c14n.ts";
 import { findChild, textContent } from "../../src/core/xml/model.ts";
 import { parseXmlDocument } from "../../src/core/xml/parse.ts";
 import { getOrThrow } from "../../src/result.ts";
-import { brandedHeader, brandedReceipt } from "../helpers.ts";
+import {
+  brandedHeader,
+  brandedReceipt,
+  REFERENCE_SAMPLE_EICS,
+  readReferenceTrzbaMessage,
+} from "../helpers.ts";
 import { loadPlaygroundP12Signer } from "./p12-helper.ts";
 
 /**
@@ -80,5 +85,13 @@ const CAEET_DIR = join(import.meta.dirname, "..", "..", "caeet");
 
     const expectedDigest = await sha256(canonicalizeToBytes(body));
     assert.strictEqual(textContent(digestValueEl).trim(), encodeBase64(expectedDigest));
+  });
+
+  test("caeet/*.p12 certificates are byte-identical to the ones embedded in the genuine reference messages they signed", () => {
+    for (const eic of REFERENCE_SAMPLE_EICS) {
+      const { certificateDer } = loadPlaygroundP12Signer(eic);
+      const { binarySecurityTokenDer } = readReferenceTrzbaMessage(eic);
+      assert.deepStrictEqual(certificateDer, binarySecurityTokenDer, eic);
+    }
   });
 });

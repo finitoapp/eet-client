@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { parseEetReceiptData, parseHeader } from "../src/builtin/validate.ts";
-import { encodeBase64 } from "../src/core/base64.ts";
+import { decodeBase64, encodeBase64 } from "../src/core/base64.ts";
 import { createCryptoKeySigner } from "../src/core/crypto-adapters.ts";
 import {
   BINARY_SECURITY_TOKEN_ENCODING_TYPE,
@@ -13,17 +13,28 @@ import {
   RSA_SHA256_SIGNATURE_ALGORITHM,
   SHA256_DIGEST_ALGORITHM,
   SOAP_NAMESPACE,
+  WSSE_NAMESPACE,
   WSU_NAMESPACE,
 } from "../src/core/namespaces.ts";
 import { sha256 } from "../src/core/webcrypto.ts";
 import { canonicalizeToString } from "../src/core/xml/c14n.ts";
-import { type XmlAttribute, type XmlElement, xmlElement, xmlText } from "../src/core/xml/model.ts";
+import {
+  findChild,
+  getAttribute,
+  textContent,
+  type XmlAttribute,
+  type XmlElement,
+  xmlElement,
+  xmlText,
+} from "../src/core/xml/model.ts";
+import { parseXmlDocument } from "../src/core/xml/parse.ts";
 import { getOrThrow } from "../src/result.ts";
 import type { EetHeader, EetHeaderInput } from "../src/types/header.ts";
 import type { EetReceiptData, EetReceiptDataInput } from "../src/types/receipt.ts";
 import type { EetSigner } from "../src/types/signer.ts";
 
 const FIXTURES_DIR = join(import.meta.dirname, "fixtures");
+const REFERENCE_SAMPLES_DIR = join(import.meta.dirname, "..", "docs", "reference", "eet-2.0");
 
 const RSA_SHA256: RsaHashedImportParams = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" };
 
@@ -52,6 +63,88 @@ export function brandedReceipt(input: EetReceiptDataInput): EetReceiptData {
 /** Validates and brands a raw `<Hlavicka>`, throwing if it's invalid (test fixtures only). */
 export function brandedHeader(input: EetHeaderInput): EetHeader {
   return getOrThrow(parseHeader(input));
+}
+
+// --- Genuine EET 2.0 playground reference messages (docs/reference/eet-2.0/*.eet.v4.req.xml): ---
+// --- real, signed `OdeslaniTrzby` SOAP requests, each with a matching real cash-register ---
+// --- certificate/key in `caeet/CA_EET-Playground-<eic>.p12`. Shared by the default ---
+// --- (unsigned-shape) round-trip test and the opt-in `.p12`-backed real-key test. ---
+
+/** Taxpayer EICs with both a captured reference request message and a matching `caeet/*.p12`. */
+export const REFERENCE_SAMPLE_EICS = ["CZ00000019", "CZ683555118", "CZ8551015704"] as const;
+
+export interface ReferenceTrzbaMessage {
+  readonly hlavicka: XmlElement;
+  readonly data: XmlElement;
+  /** DER bytes of the `<wsse:BinarySecurityToken>` embedded in the captured message. */
+  readonly binarySecurityTokenDer: Uint8Array;
+}
+
+function requireReferenceChild(
+  parent: XmlElement,
+  uri: string,
+  local: string,
+  context: string,
+): XmlElement {
+  const child = findChild(parent, uri, local);
+  if (child === undefined) throw new Error(`${context}: missing <${local}>`);
+  return child;
+}
+
+function requireReferenceAttribute(element: XmlElement, local: string, context: string): string {
+  const value = getAttribute(element, "", local);
+  if (value === undefined) throw new Error(`${context}: missing required attribute "${local}"`);
+  return value;
+}
+
+/** Reads and parses `docs/reference/eet-2.0/<eic>.eet.v4.req.xml`. */
+export function readReferenceTrzbaMessage(eic: string): ReferenceTrzbaMessage {
+  const fileName = `${eic}.eet.v4.req.xml`;
+  const xml = readFileSync(join(REFERENCE_SAMPLES_DIR, fileName), "utf8");
+  const root = getOrThrow(parseXmlDocument(xml));
+  const soapHeader = requireReferenceChild(root, SOAP_NAMESPACE, "Header", fileName);
+  const security = requireReferenceChild(soapHeader, WSSE_NAMESPACE, "Security", fileName);
+  const bst = requireReferenceChild(security, WSSE_NAMESPACE, "BinarySecurityToken", fileName);
+  const body = requireReferenceChild(root, SOAP_NAMESPACE, "Body", fileName);
+  const trzba = requireReferenceChild(body, EET_NAMESPACE, "Trzba", fileName);
+  const hlavicka = requireReferenceChild(trzba, EET_NAMESPACE, "Hlavicka", fileName);
+  const data = requireReferenceChild(trzba, EET_NAMESPACE, "Data", fileName);
+  return { hlavicka, data, binarySecurityTokenDer: decodeBase64(textContent(bst).trim()) };
+}
+
+/** Rebuilds an {@link EetReceiptDataInput} from a reference message's `<Data>` element. */
+export function referenceReceiptDataInput(data: XmlElement, eic: string): EetReceiptDataInput {
+  const context = `${eic}.eet.v4.req.xml`;
+  const eicPoverujiciho = getAttribute(data, "", "eic_poverujiciho");
+  const povereniVicePopl = getAttribute(data, "", "povereni_vice_popl");
+  const urcenoCerpZuct = getAttribute(data, "", "urceno_cerp_zuct");
+  const cerpZuct = getAttribute(data, "", "cerp_zuct");
+
+  return {
+    eic_popl: requireReferenceAttribute(data, "eic_popl", context),
+    ...(eicPoverujiciho !== undefined ? { eic_poverujiciho: eicPoverujiciho } : {}),
+    ...(povereniVicePopl !== undefined ? { povereni_vice_popl: povereniVicePopl === "true" } : {}),
+    id_jednotky: requireReferenceAttribute(data, "id_jednotky", context),
+    id_pokl: requireReferenceAttribute(data, "id_pokl", context),
+    porad_cis: requireReferenceAttribute(data, "porad_cis", context),
+    dat_trzby: requireReferenceAttribute(data, "dat_trzby", context),
+    celk_trzba: requireReferenceAttribute(data, "celk_trzba", context),
+    ...(urcenoCerpZuct !== undefined ? { urceno_cerp_zuct: urcenoCerpZuct } : {}),
+    ...(cerpZuct !== undefined ? { cerp_zuct: cerpZuct } : {}),
+  };
+}
+
+/** Rebuilds an {@link EetHeaderInput} from a reference message's `<Hlavicka>` element. */
+export function referenceHeaderInput(hlavicka: XmlElement, eic: string): EetHeaderInput {
+  const context = `${eic}.eet.v4.req.xml`;
+  const firstSubmission = requireReferenceAttribute(hlavicka, "prvni_zaslani", context);
+  const verification = getAttribute(hlavicka, "", "overeni");
+  return {
+    uuid: requireReferenceAttribute(hlavicka, "uuid_zpravy", context),
+    sentAt: requireReferenceAttribute(hlavicka, "dat_odesl", context),
+    firstSubmission: firstSubmission === "true",
+    verification: verification === "true",
+  };
 }
 
 /**

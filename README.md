@@ -629,7 +629,9 @@ explicitně proměnnou prostředí — pro každou kategorii existuje i vlastní
 
 ```sh
 # Podepsání skutečným pokladním klíčem/certifikátem a kontrola řetězce důvěry
-# vůči caeet/ca_eet-*.crt — bez síťového volání.
+# vůči caeet/ca_eet-*.crt — bez síťového volání. Součástí je i kontrola, že
+# caeet/*.p12 obsahuje bajtově stejný certifikát jako reálné zprávy zachycené
+# v docs/reference/eet-2.0/*.eet.v4.req.xml.
 bun run test:integration:p12       # EET_TEST_P12=1 bun test test/integration
 
 # Ověření, že reálný endpoint EET neposílá CORS hlavičky (viz

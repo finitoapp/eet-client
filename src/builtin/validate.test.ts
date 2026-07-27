@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { each } from "../../test/helpers.ts";
+import {
+  each,
+  REFERENCE_SAMPLE_EICS,
+  readReferenceTrzbaMessage,
+  referenceHeaderInput,
+  referenceReceiptDataInput,
+} from "../../test/helpers.ts";
 import { isAllowedAsciiString } from "../core/patterns.ts";
 import type { EetHeaderInput } from "../types/header.ts";
 import type { EetReceiptDataInput } from "../types/receipt.ts";
@@ -239,4 +245,19 @@ describe("parseHeader", () => {
     assert.strictEqual(result.error.type, "EetValidationError");
     assert.ok(result.error.issues.length >= 2);
   });
+});
+
+describe("parseEetReceiptData / parseHeader: genuine EET 2.0 playground reference messages", () => {
+  // Independently-sourced conformance check: these `<Hlavicka>`/`<Data>` attribute values come
+  // from real, signed requests GFŘ's own playground accepted (docs/reference/eet-2.0/*.eet.v4.req.xml),
+  // not from test data authored alongside these validators — guards against a validator and its
+  // own hand-written fixtures sharing the same (possibly wrong) assumption about what's valid.
+  each(REFERENCE_SAMPLE_EICS.map((eic) => [eic] as const))(
+    "%s: real captured values pass validation",
+    (eic) => {
+      const { hlavicka, data } = readReferenceTrzbaMessage(eic);
+      assert.deepStrictEqual(receiptIssues(referenceReceiptDataInput(data, eic)), []);
+      assert.deepStrictEqual(headerIssues(referenceHeaderInput(hlavicka, eic)), []);
+    },
+  );
 });
