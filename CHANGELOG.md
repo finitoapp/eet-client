@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 once it reaches its first published release.
 
+## [0.2.0](https://github.com/finitoapp/eet-client/compare/v0.1.0...v0.2.0) (2026-07-27)
+
+
+### Features
+
+* add experimental CA EET renewal client (@finitoapp/eet-client/caeet-renewal) ([4ee2b84](https://github.com/finitoapp/eet-client/commit/4ee2b84bb07eccd0526137d6a72c0770b4358d16))
+* add pure-JS PKCS[#12](https://github.com/finitoapp/eet-client/issues/12) parser (@finitoapp/eet-client/pkcs12) ([68c1c66](https://github.com/finitoapp/eet-client/commit/68c1c66d7f6db21661dd9ca623dadcdac3291830))
+
 ## [Unreleased]
 
 ## [0.1.0] - 2026-07-26
