@@ -89,22 +89,6 @@ export function findChildren(node: XmlElement, uri: string, local: string): read
   return result;
 }
 
-/** Searches the whole subtree (including `node` itself) for the first matching element. */
-export function findDescendant(
-  node: XmlElement,
-  uri: string,
-  local: string,
-): XmlElement | undefined {
-  if (node.name.uri === uri && node.name.local === local) return node;
-  for (const child of node.children) {
-    if (child.type === "element") {
-      const found = findDescendant(child, uri, local);
-      if (found !== undefined) return found;
-    }
-  }
-  return undefined;
-}
-
 /** Returns the value of an unprefixed-local-name attribute in namespace `uri`, if present. */
 export function getAttribute(node: XmlElement, uri: string, local: string): string | undefined {
   for (const attribute of node.attributes) {

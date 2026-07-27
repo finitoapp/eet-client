@@ -85,6 +85,15 @@ describe("canonicalizeToString (Exclusive C14N)", () => {
     assert.strictEqual(canonicalizeToString(el), '<el a="x&amp;y&lt;z>&quot;&#9;&#xA;&#xD;"></el>');
   });
 
+  test('undeclares an unprefixed element with xmlns="" when an ancestor has a default namespace', () => {
+    const inner = xmlElement({ prefix: "", local: "inner", uri: "" });
+    const outer = xmlElement({ prefix: "", local: "outer", uri: A_NS }, { children: [inner] });
+    assert.strictEqual(
+      canonicalizeToString(outer),
+      `<outer xmlns="${A_NS}"><inner xmlns=""></inner></outer>`,
+    );
+  });
+
   test("never renders a namespace declaration for the implicit xml: prefix", () => {
     const el = xmlElement(
       { prefix: "", local: "el", uri: "" },
