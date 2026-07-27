@@ -12,6 +12,7 @@ import {
 import { getOrThrow } from "../result.ts";
 import type { ResponseSignatureVerifier } from "../types/verifier.ts";
 import { createCryptoKeyResponseSignatureVerifier } from "./crypto-adapters.ts";
+import { SOAP_NAMESPACE } from "./namespaces.ts";
 import { parseAndVerifyResponse } from "./parse-response.ts";
 
 const ALWAYS_ACCEPT: ResponseSignatureVerifier = { verify: async () => true };
@@ -270,6 +271,132 @@ describe("parseAndVerifyResponse: accepted (Potvrzeni)", () => {
     assert.strictEqual(!result.ok && result.error.type, "EetSignatureError");
   });
 
+  test("rejects when ds:Reference does not point to the signed soap:Body", async () => {
+    const signer = await createTestSigner("test-signer.cert.der", "test-signer.key.pk8");
+    const xml = await buildSignedOdpovedResponse(
+      buildPotvrzeniOdpoved({
+        uuid: "123e4567-e89b-42d3-a456-426655440000",
+        receivedAt: "2027-03-04T18:25:21+01:00",
+        pok: "987a6be5-6af5-44f3-b4fc-987654321000-02",
+      }),
+      signer,
+    );
+    const tampered = xml.replace('<ds:Reference URI="#Body">', '<ds:Reference URI="#NotBody">');
+
+    const result = await parseAndVerifyResponse(tampered, {
+      httpStatus: 200,
+      responseSignatureVerifier: await pinnedVerifierForTestSigner(),
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetSignatureError");
+  });
+
+  test("rejects when ds:DigestValue is not valid base64", async () => {
+    const signer = await createTestSigner("test-signer.cert.der", "test-signer.key.pk8");
+    const xml = await buildSignedOdpovedResponse(
+      buildPotvrzeniOdpoved({
+        uuid: "123e4567-e89b-42d3-a456-426655440000",
+        receivedAt: "2027-03-04T18:25:21+01:00",
+        pok: "987a6be5-6af5-44f3-b4fc-987654321000-02",
+      }),
+      signer,
+    );
+    const tampered = xml.replace(
+      /<ds:DigestValue>[^<]*<\/ds:DigestValue>/,
+      "<ds:DigestValue>!!!not-base64!!!</ds:DigestValue>",
+    );
+
+    const result = await parseAndVerifyResponse(tampered, {
+      httpStatus: 200,
+      responseSignatureVerifier: await pinnedVerifierForTestSigner(),
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetSignatureError");
+  });
+
+  test("rejects when ds:SignatureValue is not valid base64", async () => {
+    const signer = await createTestSigner("test-signer.cert.der", "test-signer.key.pk8");
+    const xml = await buildSignedOdpovedResponse(
+      buildPotvrzeniOdpoved({
+        uuid: "123e4567-e89b-42d3-a456-426655440000",
+        receivedAt: "2027-03-04T18:25:21+01:00",
+        pok: "987a6be5-6af5-44f3-b4fc-987654321000-02",
+      }),
+      signer,
+    );
+    const tampered = xml.replace(
+      /<ds:SignatureValue>[^<]*<\/ds:SignatureValue>/,
+      "<ds:SignatureValue>!!!not-base64!!!</ds:SignatureValue>",
+    );
+
+    const result = await parseAndVerifyResponse(tampered, {
+      httpStatus: 200,
+      responseSignatureVerifier: await pinnedVerifierForTestSigner(),
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetSignatureError");
+  });
+
+  test("rejects when wsse:Reference URI does not reference a local token (no # prefix)", async () => {
+    const signer = await createTestSigner("test-signer.cert.der", "test-signer.key.pk8");
+    const xml = await buildSignedOdpovedResponse(
+      buildPotvrzeniOdpoved({
+        uuid: "123e4567-e89b-42d3-a456-426655440000",
+        receivedAt: "2027-03-04T18:25:21+01:00",
+        pok: "987a6be5-6af5-44f3-b4fc-987654321000-02",
+      }),
+      signer,
+    );
+    const tampered = xml.replace('URI="#X509Token"', 'URI="X509Token"');
+
+    const result = await parseAndVerifyResponse(tampered, {
+      httpStatus: 200,
+      responseSignatureVerifier: await pinnedVerifierForTestSigner(),
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetSignatureError");
+  });
+
+  test("rejects when the BinarySecurityToken certificate is not valid base64", async () => {
+    const signer = await createTestSigner("test-signer.cert.der", "test-signer.key.pk8");
+    const xml = await buildSignedOdpovedResponse(
+      buildPotvrzeniOdpoved({
+        uuid: "123e4567-e89b-42d3-a456-426655440000",
+        receivedAt: "2027-03-04T18:25:21+01:00",
+        pok: "987a6be5-6af5-44f3-b4fc-987654321000-02",
+      }),
+      signer,
+    );
+    const tampered = xml.replace(
+      /(<wsse:BinarySecurityToken[^>]*>)[^<]*(<\/wsse:BinarySecurityToken>)/,
+      "$1!!!not-base64!!!$2",
+    );
+
+    const result = await parseAndVerifyResponse(tampered, {
+      httpStatus: 200,
+      responseSignatureVerifier: await pinnedVerifierForTestSigner(),
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetSignatureError");
+  });
+
+  test("rejects a Potvrzeni response with an invalid pok attribute", async () => {
+    const xml = buildUnsignedOdpovedResponse(
+      buildPotvrzeniOdpoved({
+        uuid: "123e4567-e89b-42d3-a456-426655440000",
+        receivedAt: "2027-03-04T18:25:21+01:00",
+        pok: "not-a-valid-pok",
+      }),
+    );
+
+    const result = await parseAndVerifyResponse(xml, {
+      httpStatus: 200,
+      responseSignatureVerifier: ALWAYS_REJECT,
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetResponseSchemaError");
+  });
+
   test("rejects a Potvrzeni response missing uuid_zpravy/dat_prij", async () => {
     const signer = await createTestSigner("test-signer.cert.der", "test-signer.key.pk8");
     const odpoved = buildPotvrzeniOdpoved({
@@ -428,6 +555,38 @@ describe("parseAndVerifyResponse: rejected (Chyba, nonzero kod)", () => {
   });
 });
 
+describe("parseAndVerifyResponse: kod/kod_varov attribute validation", () => {
+  test("rejects a Varovani with an invalid kod_varov attribute", async () => {
+    const xml = buildUnsignedOdpovedResponse(
+      buildChybaOdpoved({
+        code: 0,
+        message: "ok",
+        warnings: [{ code: 1, message: "w" }],
+      }),
+    ).replace('kod_varov="1"', 'kod_varov="0"');
+
+    const result = await parseAndVerifyResponse(xml, {
+      httpStatus: 200,
+      responseSignatureVerifier: ALWAYS_REJECT,
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetResponseSchemaError");
+  });
+
+  test("rejects a Chyba with an invalid kod attribute", async () => {
+    const xml = buildUnsignedOdpovedResponse(
+      buildChybaOdpoved({ code: 7, message: "err" }),
+    ).replace('kod="7"', 'kod="12345"');
+
+    const result = await parseAndVerifyResponse(xml, {
+      httpStatus: 200,
+      responseSignatureVerifier: ALWAYS_REJECT,
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetResponseSchemaError");
+  });
+});
+
 describe("parseAndVerifyResponse: <Chyba>/<Varovani> text length limit (MAX_MESSAGE_TEXT_LENGTH)", () => {
   test("accepts Chyba text at exactly the 100-character limit", async () => {
     const message = "a".repeat(100);
@@ -517,5 +676,94 @@ describe("parseAndVerifyResponse: SOAP Fault and malformed responses", () => {
     });
     assert.strictEqual(result.ok, false);
     assert.strictEqual(!result.ok && result.error.type, "EetResponseSchemaError");
+  });
+
+  test("rejects a response containing both tns:Potvrzeni and tns:Chyba", async () => {
+    const potvrzeniOdpoved = buildPotvrzeniOdpoved({
+      uuid: "123e4567-e89b-42d3-a456-426655440000",
+      receivedAt: "2027-03-04T18:25:21+01:00",
+      pok: "987a6be5-6af5-44f3-b4fc-987654321000-02",
+    });
+    const chybaOdpoved = buildChybaOdpoved({ code: 7, message: "err" });
+    const chybaEl = chybaOdpoved.children[1];
+    if (chybaEl === undefined) throw new Error("test setup: missing Chyba element");
+    const combined = {
+      ...potvrzeniOdpoved,
+      children: [...potvrzeniOdpoved.children, chybaEl],
+    };
+    const xml = buildUnsignedOdpovedResponse(combined);
+
+    const result = await parseAndVerifyResponse(xml, {
+      httpStatus: 200,
+      responseSignatureVerifier: ALWAYS_REJECT,
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetResponseSchemaError");
+  });
+
+  test("rejects a response whose tns:Odpoved does not contain tns:Hlavicka", async () => {
+    const odpoved = buildChybaOdpoved({ code: 7, message: "err" });
+    const withoutHeader = {
+      ...odpoved,
+      children: odpoved.children.filter(
+        (child) => !(child.type === "element" && child.name.local === "Hlavicka"),
+      ),
+    };
+    const xml = buildUnsignedOdpovedResponse(withoutHeader);
+
+    const result = await parseAndVerifyResponse(xml, {
+      httpStatus: 200,
+      responseSignatureVerifier: ALWAYS_REJECT,
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetResponseSchemaError");
+  });
+
+  test("rejects when the response root element is not soap:Envelope", async () => {
+    const xml = '<?xml version="1.0" encoding="UTF-8"?><foo:NotEnvelope xmlns:foo="urn:test"/>';
+
+    const result = await parseAndVerifyResponse(xml, {
+      httpStatus: 200,
+      responseSignatureVerifier: ALWAYS_REJECT,
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetResponseSchemaError");
+  });
+
+  test("a soap:Envelope with no soap:Body on a non-2xx status is an EetHttpError", async () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?><soap:Envelope xmlns:soap="${SOAP_NAMESPACE}"/>`;
+
+    const result = await parseAndVerifyResponse(xml, {
+      httpStatus: 502,
+      responseSignatureVerifier: ALWAYS_REJECT,
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetHttpError");
+  });
+
+  test("a soap:Body with no recognizable content on a 2xx status is a schema error", async () => {
+    const xml =
+      `<?xml version="1.0" encoding="UTF-8"?><soap:Envelope xmlns:soap="${SOAP_NAMESPACE}">` +
+      "<soap:Body/></soap:Envelope>";
+
+    const result = await parseAndVerifyResponse(xml, {
+      httpStatus: 200,
+      responseSignatureVerifier: ALWAYS_REJECT,
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetResponseSchemaError");
+  });
+
+  test("a soap:Body with no recognizable content on a non-2xx status is an EetHttpError", async () => {
+    const xml =
+      `<?xml version="1.0" encoding="UTF-8"?><soap:Envelope xmlns:soap="${SOAP_NAMESPACE}">` +
+      "<soap:Body/></soap:Envelope>";
+
+    const result = await parseAndVerifyResponse(xml, {
+      httpStatus: 503,
+      responseSignatureVerifier: ALWAYS_REJECT,
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(!result.ok && result.error.type, "EetHttpError");
   });
 });
