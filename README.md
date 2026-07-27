@@ -28,10 +28,13 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 - [Podporované runtimes](#podporované-runtimes)
 - [Instalace](#instalace)
 - [Rychlý start](#rychlý-start)
+  - [`signer` z reálného `.p12` souboru od GFŘ](#signer-z-reálného-p12-souboru-od-gfř)
 - [Signer](#signer)
   - [Získání produkčního pokladního certifikátu](#získání-produkčního-pokladního-certifikátu)
   - [Nastavení klíče z reálného pokladního certifikátu (.p12/PFX)](#nastavení-klíče-z-reálného-pokladního-certifikátu-p12pfx)
-    - [V Node.js/Bunu/Denu](#v-nodejsbunudenu)
+    - [`@finitoapp/eet-client/pkcs12` (doporučeno)](#finitoappeet-clientpkcs12-doporučeno)
+    - [Alternativa: `openssl`](#alternativa-openssl)
+    - [Alternativa: `node-forge`](#alternativa-node-forge)
     - [V prohlížeči](#v-prohlížeči)
 - [Ověření podpisu odpovědi](#ověření-podpisu-odpovědi)
 - [Výsledky `submit()`](#výsledky-submit)
@@ -161,6 +164,45 @@ vyměnitelná; `submit()` sám o sobě nevaliduje vůbec nic —
 správné ze své podstaty; vlastní `uuid`/`sentAt` musíte dodat už jako `Uuid`/
 `EetDateTime` (např. výstupem `parseHeader`).
 
+### `signer` z reálného `.p12` souboru od GFŘ
+
+Nejběžnější první krok je proměnit `.p12`/`.pfx` soubor stažený z DIS+ (viz
+[Získání produkčního pokladního certifikátu](#získání-produkčního-pokladního-certifikátu))
+na `signer` z příkladu výše. Nejrychlejší cesta je vestavěný, čistě JS/Web
+Crypto parser `@finitoapp/eet-client/pkcs12` — funguje stejně v Node.js/Bunu/
+Denu i přímo v prohlížeči, bez `openssl` nebo jiného externího nástroje:
+
+```ts
+import { readFileSync } from "node:fs";
+import { createCryptoKeySigner } from "@finitoapp/eet-client";
+import { parsePkcs12, pickPrivateKeyCertificate } from "@finitoapp/eet-client/pkcs12";
+
+const p12 = new Uint8Array(readFileSync("pokladni-cert.p12"));
+const parsed = await parsePkcs12(p12, process.env.P12_PASSWORD ?? "");
+if (!parsed.ok) throw parsed.error; // Pkcs12InvalidMacError (špatné heslo) / Pkcs12MalformedError
+
+const certificate = pickPrivateKeyCertificate(parsed.value);
+if (certificate === undefined || parsed.value.privateKey === undefined) {
+  throw new Error("V .p12 souboru chybí certifikát nebo privátní klíč.");
+}
+
+const privateKey = await crypto.subtle.importKey(
+  "pkcs8",
+  parsed.value.privateKey.der,
+  { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+  false, // extractable: false — surový klíč pak z CryptoKey už nejde vytáhnout
+  ["sign"],
+);
+
+const signer = createCryptoKeySigner(certificate.der, privateKey);
+```
+
+Podrobnosti (podporované šifrovací algoritmy `.p12` souborů, alternativy přes
+`openssl`/[`node-forge`](https://github.com/digitalbazaar/forge), použití
+v prohlížeči a bezpečnostní poznámky k heslu) viz [Nastavení klíče z reálného
+pokladního certifikátu (.p12/PFX)](#nastavení-klíče-z-reálného-pokladního-certifikátu-p12pfx)
+níže.
+
 ## Signer
 
 `signer` je přenositelný adaptér nad privátním klíčem poplatníka. SDK z něj
@@ -193,9 +235,13 @@ const privateKey = await crypto.subtle.importKey(
 const signer = createCryptoKeySigner(certificateDer, privateKey);
 ```
 
-SDK **nenačítá ani nekonvertuje PEM/PFX/PKCS#12** — převod pokladního
-certifikátu do formátu, který si `signer` zvolí, je na integrátorovi (viz
-[Bezpečné nakládání s certifikáty](#bezpečné-nakládání-s-certifikáty)).
+Hlavní vstupní bod (`@finitoapp/eet-client`) sám **nenačítá ani nekonvertuje
+PEM/PFX/PKCS#12** — převod pokladního certifikátu do DER/`CryptoKey`, který
+`signer` potřebuje, řeší samostatný volitelný podcestový modul
+`@finitoapp/eet-client/pkcs12` (viz [Nastavení klíče z reálného pokladního
+certifikátu (.p12/PFX)](#nastavení-klíče-z-reálného-pokladního-certifikátu-p12pfx)
+níže), případně externí nástroj/knihovna dle vlastní volby (viz [Bezpečné
+nakládání s certifikáty](#bezpečné-nakládání-s-certifikáty)).
 
 ### Získání produkčního pokladního certifikátu
 
@@ -248,13 +294,66 @@ samostatný podcestový import (**experimentální**, viz varování v té sekci
 
 Certifikační autorita vydává pokladní certifikát jako soubor PKCS#12
 (`.p12`/`.pfx`) chráněný heslem. `signer` ale čeká holé DER bajty (certifikát
-a PKCS8 privátní klíč) — `.p12` je nutné rozbalit předem, jednorázově, mimo
-`crypto.subtle`. Postup se liší podle toho, kde váš kód běží:
+a PKCS8 privátní klíč) — `.p12` je nutné nejdřív rozbalit. Na výběr jsou tři
+cesty, popsané níže: vestavěný `@finitoapp/eet-client/pkcs12` (doporučeno —
+čistý JS/Web Crypto, funguje všude včetně prohlížeče), `openssl` (externí
+nástroj, jednorázově v shellu) a [`node-forge`](https://github.com/digitalbazaar/forge)
+(zavedená externí knihovna). Všechny tři vedou ke stejnému výsledku — DER
+bajtům, které `crypto.subtle.importKey("pkcs8", ...)`/`createCryptoKeySigner`
+čekají.
 
-#### V Node.js/Bunu/Denu
+#### `@finitoapp/eet-client/pkcs12` (doporučeno)
 
-Rozbalte `.p12` jednou, přímo v shellu, přes `openssl` (heslo dejte do
-souboru, ne jako argument — ten je vidět v seznamu procesů):
+Volitelný podcestový modul, samostatná implementace čtení PKCS#12 (RFC 7292)
+v čistém JS: žádné `node:crypto`/`node:tls`, žádná nativní/WASM závislost —
+jen `globalThis.crypto.subtle`, stejně jako zbytek SDK. Hlavní vstupní bod
+(`@finitoapp/eet-client`) tento modul nikdy neimportuje.
+
+```ts
+import { readFileSync } from "node:fs";
+import { createCryptoKeySigner } from "@finitoapp/eet-client";
+import { parsePkcs12, pickPrivateKeyCertificate } from "@finitoapp/eet-client/pkcs12";
+
+const p12 = new Uint8Array(readFileSync("pokladni-cert.p12"));
+const parsed = await parsePkcs12(p12, /* heslo z DIS+/aplikace Správa pokladních certifikátů */ "");
+if (!parsed.ok) throw parsed.error; // Pkcs12InvalidMacError (špatné heslo) / Pkcs12MalformedError
+
+// pickPrivateKeyCertificate vybere z (případného) řetězu certifikátů ten, který
+// patří k privátnímu klíči (podle localKeyId) — u .p12 s jedním certifikátem
+// (typický pokladní certifikát) vrátí prostě ten jediný.
+const certificate = pickPrivateKeyCertificate(parsed.value);
+if (certificate === undefined || parsed.value.privateKey === undefined) {
+  throw new Error("V .p12 souboru chybí certifikát nebo privátní klíč.");
+}
+
+const privateKey = await crypto.subtle.importKey(
+  "pkcs8",
+  parsed.value.privateKey.der,
+  { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+  false, // extractable: false
+  ["sign"],
+);
+
+const signer = createCryptoKeySigner(certificate.der, privateKey);
+```
+
+`parsePkcs12` implementuje jen to, co reálné pokladní/playground `.p12`
+soubory od GFŘ skutečně používají — heslem chráněný režim (`MacData` přes
+SHA-1), certifikáty šifrované `pbeWithSHA1And{40,128}BitRC2-CBC` a privátní
+klíč šifrovaný `pbeWithSHA1And{2,3}-KeyTripleDES-CBC` (RC2 a DES/3DES jsou
+proto v `src/pkcs12/` hand-rolled — `crypto.subtle` je vůbec neumí, jde
+o záměrně starší algoritmy, kterými `.p12` soubory šifrují CA nástroje
+dodnes). Cokoliv mimo tento rozsah (podepsaný/enveloped `authSafe`, jiné PBE
+algoritmy) vrátí typovanou `Pkcs12MalformedError` s OID, ne tichý špatný
+výsledek — viz zdrojový doc komentář `src/pkcs12/parse.ts` pro přesný výčet.
+
+#### Alternativa: `openssl`
+
+Kdo nechce přidávat další podcestový import, nebo chce rozbalení ověřit
+nezávisle přes všeobecně známý nástroj, může místo toho použít `openssl`
+(mimo prohlížeč — viz [V prohlížeči](#v-prohlížeči) níže). Rozbalte `.p12`
+jednou, přímo v shellu (heslo dejte do souboru, ne jako argument — ten je
+vidět v seznamu procesů):
 
 ```sh
 # -legacy: starší .p12 soubory šifrují klíč přes RC2-40-CBC, který openssl 3.x
@@ -301,12 +400,95 @@ zdekódovat base64 tělo mezi `-----BEGIN...`/`-----END...` sám — přesně t�
 způsobem to (jen pro testy, nikdy natrvalo na disk) dělá
 `test/integration/p12-helper.ts` v tomto repozitáři.
 
+#### Alternativa: `node-forge`
+
+Kdo preferuje zavedenou, široce používanou JS knihovnu před vestavěným
+parserem této SDK, může PKCS#12 rozbalit i přes
+[`node-forge`](https://github.com/digitalbazaar/forge) — umí stejné starší
+algoritmy (RC2, 3DES) jako reálné `.p12` soubory od GFŘ, a funguje jak
+v Node.js/Bunu/Denu, tak v prohlížeči:
+
+```ts
+import { readFileSync } from "node:fs";
+import forge from "node-forge";
+import { createCryptoKeySigner } from "@finitoapp/eet-client";
+
+// forge pracuje s "binárními řetězci" (1 znak = 1 bajt), ne Uint8Array — tenhle
+// pár funkcí převádí mezi oběma reprezentacemi.
+const toBinaryString = (bytes: Uint8Array) => String.fromCharCode(...bytes);
+const toBytes = (binary: string): Uint8Array => {
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  return out;
+};
+
+const p12Asn1 = forge.asn1.fromDer(toBinaryString(new Uint8Array(readFileSync("pokladni-cert.p12"))));
+const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, "heslo-z-dis-plus");
+
+const certBag = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag]?.[0];
+const keyBag = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[
+  forge.pki.oids.pkcs8ShroudedKeyBag
+]?.[0];
+if (certBag?.cert === undefined || keyBag?.key === undefined) {
+  throw new Error("V .p12 souboru chybí certifikát nebo privátní klíč.");
+}
+
+const certificateDer = toBytes(forge.asn1.toDer(forge.pki.certificateToAsn1(certBag.cert)).getBytes());
+const keyDer = toBytes(
+  forge.asn1.toDer(forge.pki.wrapRsaPrivateKey(forge.pki.privateKeyToAsn1(keyBag.key))).getBytes(),
+);
+
+const privateKey = await crypto.subtle.importKey(
+  "pkcs8", keyDer, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"],
+);
+const signer = createCryptoKeySigner(certificateDer, privateKey);
+```
+
+`node-forge` je oproti `@finitoapp/eet-client/pkcs12` širší, dlouhodobě
+zavedená knihovna (TLS, X.509, RSA, ...), ale je to netriviální runtime
+závislost (stovky kB) do nezávislého, samostatně udržovaného balíčku — v
+rozporu s tím, že tato SDK jinak nemá žádné runtime závislosti (viz úvod).
+Vestavěný `@finitoapp/eet-client/pkcs12` naproti tomu dělá jen to, co je
+potřeba pro reálné GFŘ `.p12` soubory, a je součástí stejné testované
+a auditovatelné codebase jako zbytek SDK. Volba je na vás — obě cesty vedou
+ke stejným DER bajtům.
+
 #### V prohlížeči
 
-`openssl` (ani jeho JS alternativy) v prohlížeči k dispozici nemáte — rozbalení
-`.p12` proto musí proběhnout **mimo prohlížeč** (stejným postupem jako výše,
-jako build krok nebo na vašem backendu) a do stránky se dostanou už jen
-odvozené DER bajty, nikdy samotný `.p12` soubor ani jeho heslo:
+`openssl` (ani `node-forge` jako Node.js knihovna) v prohlížeči k dispozici
+nemáte, ale `@finitoapp/eet-client/pkcs12` je čistý JS/Web Crypto — `.p12`
+proto jde rozbalit přímo v prohlížeči, stejným kódem jako v Node.js/Bunu/Denu,
+jen se soubor typicky získá z `<input type="file">`:
+
+```ts
+import { createCryptoKeySigner } from "@finitoapp/eet-client";
+import { parsePkcs12, pickPrivateKeyCertificate } from "@finitoapp/eet-client/pkcs12";
+
+// file: File z <input type="file"> (nebo drag & drop) — .p12 soubor nikdy
+// neopouští prohlížeč, na rozdíl od backendové varianty níže.
+const p12 = new Uint8Array(await file.arrayBuffer());
+const parsed = await parsePkcs12(p12, password); // password z <input type="password">
+
+if (!parsed.ok) throw parsed.error;
+const certificate = pickPrivateKeyCertificate(parsed.value);
+if (certificate === undefined || parsed.value.privateKey === undefined) {
+  throw new Error("V .p12 souboru chybí certifikát nebo privátní klíč.");
+}
+
+const privateKey = await crypto.subtle.importKey(
+  "pkcs8",
+  parsed.value.privateKey.der,
+  { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+  false, // extractable: false — klíč pak z CryptoKey už nejde znovu vytáhnout
+  ["sign"],
+);
+
+const signer = createCryptoKeySigner(certificate.der, privateKey);
+```
+
+Bezpečnostně konzervativnější nasazení (kde `.p12` soubor ani jeho heslo
+nemá do klientského JS vůbec dorazit) může místo toho zůstat u rozbalení na
+backendu a poslat do stránky už jen odvozené DER bajty:
 
 ```ts
 // certificateDerBase64/keyDerBase64 přišly z vašeho backendu (autentizovaně,
@@ -317,7 +499,7 @@ const privateKey = await crypto.subtle.importKey(
   "pkcs8",
   toBytes(keyDerBase64),
   { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-  false, // extractable: false — klíč pak z CryptoKey už nejde znovu vytáhnout
+  false,
   ["sign"],
 );
 
@@ -327,8 +509,8 @@ const signer = createCryptoKeySigner(toBytes(certificateDerBase64), privateKey);
 Pro opakované návštěvy stejné stránky/aplikace zvažte `privateKey` (samotný
 `CryptoKey`, ne surové bajty) rovnou uložit do IndexedDB — prohlížeče `CryptoKey`
 umí bezpečně serializovat přes structured clone. Další načtení stránky pak
-klíč načte přímo z IndexedDB a surové PKCS8 bajty se do prohlížeče už nemusí
-posílat znovu.
+klíč načte přímo z IndexedDB a `.p12`/PKCS8 bajty se do prohlížeče už nemusí
+posílat/rozbalovat znovu.
 
 Nezapomeňte i na `fetch: window.fetch.bind(window)` z
 [Použití v prohlížeči](#použití-v-prohlížeči) — bez něj `submit()` v reálném
@@ -812,8 +994,11 @@ mimo předdefinovaných/číselných odkazů jsou odmítnuty) a před vrácením
 ## Rozsah první verze
 
 Není součástí: automatické retry/fronta, doménové workflow pokladny/účtenky,
-načítání PEM/PFX v veřejném API, produkční endpoint (dokud jej GFŘ oficiálně
-nezveřejní — vždy jej dodá integrátor konfigurací). Automatizovaná obnova
+produkční endpoint (dokud jej GFŘ oficiálně nezveřejní — vždy jej dodá
+integrátor konfigurací). Načítání PKCS#12 (`.p12`/PFX) má vlastní, samostatný
+podcestový modul (`@finitoapp/eet-client/pkcs12`, viz [Nastavení klíče z
+reálného pokladního certifikátu (.p12/PFX)](#nastavení-klíče-z-reálného-pokladního-certifikátu-p12pfx))
+— hlavní vstupní bod ho stále neimportuje. Automatizovaná obnova
 pokladního certifikátu má vlastní, samostatný podcestový klient (viz
 [Automatizovaná obnova pokladního
 certifikátu](#automatizovaná-obnova-pokladního-certifikátu-finitoappeet-clientcaeet-renewal)),

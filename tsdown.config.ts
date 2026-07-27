@@ -6,6 +6,7 @@ export default defineConfig({
     zod: "src/zod/index.ts",
     builtin: "src/builtin/index.ts",
     "caeet-renewal": "src/caeet-renewal/index.ts",
+    pkcs12: "src/pkcs12/index.ts",
   },
   format: ["esm", "cjs"],
   dts: true,

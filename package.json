@@ -76,6 +76,16 @@
         "types": "./dist/caeet-renewal.d.cts",
         "default": "./dist/caeet-renewal.cjs"
       }
+    },
+    "./pkcs12": {
+      "import": {
+        "types": "./dist/pkcs12.d.mts",
+        "default": "./dist/pkcs12.mjs"
+      },
+      "require": {
+        "types": "./dist/pkcs12.d.cts",
+        "default": "./dist/pkcs12.cjs"
+      }
     }
   },
   "scripts": {
