@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@finitoapp/eet-client": ["../src/index.ts"],
+      "@finitoapp/eet-client/builtin": ["../src/builtin/index.ts"],
+      "@finitoapp/eet-client/pkcs12": ["../src/pkcs12/index.ts"]
+    },
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedSideEffectImports": true,
+    "erasableSyntaxOnly": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["vite/client"]
+  },
+  "include": ["src", "vite.config.ts"]
+}

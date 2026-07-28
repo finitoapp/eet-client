@@ -12,3 +12,7 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
+
+# Local Vercel project link/tokens (see eet-tester/README.md "Nasazení na Vercel")
+.vercel/
+.env*
