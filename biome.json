@@ -1,7 +1,22 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.5/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
-    "includes": ["**", "!dist", "!docs/reference/eet-2.0/assets"]
+    "includes": [
+      "**",
+      "!dist",
+      "!docs/reference/eet-2.0/assets",
+      "!.vercel",
+      "!eet-tester/dist",
+      "!eet-tester/.vercel",
+      "!eet-tester/src/components/ui",
+      "!eet-tester/src/lib/utils.ts",
+      "!eet-tester/src/index.css"
+    ]
   },
   "formatter": {
     "enabled": true,

@@ -1,0 +1,15 @@
+# Build output and deployment metadata (node_modules/ and dist/ are already covered by the root
+# .gitignore, kept here too for clarity when this directory is browsed on its own)
+node_modules/
+dist/
+.vercel/
+
+# Never commit a real certificate or its password — use caeet/*.p12 from the repo root for
+# testing, loaded through the UI at runtime, not copied into this directory.
+*.p12
+*.pfx
+*.key
+*.pem
+*.der
+.env
+.env.*

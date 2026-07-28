@@ -1,0 +1,82 @@
+name: Deploy eet-tester
+
+# Deploys the eet-tester demo app (see eet-tester/README.md) to Vercel. The build itself runs
+# here, on this runner, via the Vercel CLI (`vercel build`) — not in Vercel's own cloud
+# infrastructure — so it sees the exact same full-monorepo checkout as the rest of CI. This
+# matters because eet-tester depends on the sibling `../src` directly (see
+# eet-tester/vite.config.ts), not on a published package.
+#
+# All `vercel` commands below run from the REPO ROOT, not from `eet-tester/` — verified directly:
+# the linked project's "Root Directory" setting (must be "eet-tester", see step 1) is a path
+# `vercel build` appends to wherever it's invoked from, mirroring how Vercel's own git-integration
+# build would clone the whole repo and then `cd` into Root Directory. Running these commands from
+# inside `eet-tester/` instead resolves to the nonexistent `eet-tester/eet-tester` and fails.
+#
+# One-time setup this workflow depends on (do this before the first run):
+#   1. Create the Vercel project and set its Root Directory to "eet-tester" (Project Settings →
+#      General → Root Directory) — the CLI has no flag for this, it's dashboard-only.
+#   2. Link it once locally, from the repo root: `bunx vercel link --project <name-or-id>`. This
+#      also writes `.vercel/project.json` (gitignored) with the `orgId`/`projectId` for step 4.
+#   3. Generate an API token at https://vercel.com/account/tokens.
+#   4. Add three repository secrets (Settings → Secrets and variables → Actions):
+#        VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+#   5. In the Vercel project's own Settings → Git, leave GitHub auto-deploy OFF (or disconnect
+#      the GitHub integration entirely) — otherwise every push would also trigger Vercel's own
+#      cloud build/deploy in addition to this workflow's, doubling every deployment.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "eet-tester/**"
+      - "src/**"
+      - ".github/workflows/deploy-eet-tester.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: deploy-eet-tester
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Recorded as a GitHub Deployment (repo's "Environments"/"Deployments" tab, "View deployment"
+    # link on the commit) — this `environment:` block is what triggers that, not a separate API
+    # call; GitHub creates the "production" environment automatically on first use if it doesn't
+    # exist yet.
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+      # Populates node_modules for the whole workspace (root + eet-tester), resolving
+      # eet-tester's `file:..` dependency against this same checkout. Done explicitly rather than
+      # left entirely to `vercel build`'s own install step, since this exact sequence is the one
+      # verified to resolve correctly in this monorepo layout (see eet-tester/README.md).
+      - run: bun install --frozen-lockfile
+      - name: Pull Vercel project settings
+        run: bunx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - name: Build via Vercel CLI
+        run: bunx vercel@latest build --prod --token="$VERCEL_TOKEN"
+      - name: Deploy prebuilt output
+        id: deploy
+        run: |
+          url="$(bunx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed to $url" | tee -a "$GITHUB_STEP_SUMMARY"

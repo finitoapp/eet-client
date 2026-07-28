@@ -30,6 +30,9 @@
   "engines": {
     "node": ">=22.18.0"
   },
+  "workspaces": [
+    "eet-tester"
+  ],
   "files": [
     "dist"
   ],
@@ -103,6 +106,7 @@
     "test:integration:live": "EET_TEST_LIVE_PLAYGROUND=1 bun test test/integration",
     "test:integration:live-browser": "EET_TEST_LIVE_PLAYGROUND_BROWSER=1 bun test test/integration",
     "check": "bun run lint && bun run typecheck && bun run test",
+    "check:tester": "cd eet-tester && bun run build",
     "precheck:package": "bun run build",
     "check:package": "publint"
   },
