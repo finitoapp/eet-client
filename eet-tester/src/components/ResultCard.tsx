@@ -1,8 +1,18 @@
 import type { EetWarning } from "@finitoapp/eet-client";
-import { AlertCircleIcon, CheckCircle2Icon, HelpCircleIcon, XCircleIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  CheckCircle2Icon,
+  CheckIcon,
+  CopyIcon,
+  HelpCircleIcon,
+  XCircleIcon,
+  XIcon,
+} from "lucide-react";
+import { useState } from "react";
 import type { SubmitResult } from "@/lib/eet.ts";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert.tsx";
 import { Badge } from "./ui/badge.tsx";
+import { Button } from "./ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card.tsx";
 
 function WarningList({ warnings }: { readonly warnings: readonly EetWarning[] }) {
@@ -16,6 +26,39 @@ function WarningList({ warnings }: { readonly warnings: readonly EetWarning[] })
         </li>
       ))}
     </ul>
+  );
+}
+
+/** A labeled value with a copy-to-clipboard button — for POK/UUID, which is what a tester most
+ * often needs to paste elsewhere (a log, a support ticket) after a submit. */
+function CopyableValue({ label, value }: { readonly label: string; readonly value: string }) {
+  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setStatus("copied");
+    } catch {
+      setStatus("failed");
+    }
+    setTimeout(() => setStatus("idle"), 2000);
+  };
+
+  return (
+    <p className="flex items-center gap-1.5">
+      {label}: <span className="font-mono">{value}</span>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Kopírovat ${label}`}
+        onClick={() => void handleCopy()}
+      >
+        {status === "copied" && <CheckIcon />}
+        {status === "failed" && <XIcon className="text-destructive" />}
+        {status === "idle" && <CopyIcon />}
+      </Button>
+      {status === "failed" && <span className="text-xs text-destructive">Kopírování selhalo</span>}
+    </p>
   );
 }
 
@@ -60,12 +103,8 @@ export function ResultCard({ result, insecureVerification = false }: ResultCardP
               {result.outcome.test && <Badge variant="secondary">test</Badge>}
             </AlertTitle>
             <AlertDescription>
-              <p>
-                POK: <span className="font-mono">{result.outcome.pok}</span>
-              </p>
-              <p>
-                UUID: <span className="font-mono">{result.outcome.uuid}</span>
-              </p>
+              <CopyableValue label="POK" value={result.outcome.pok} />
+              <CopyableValue label="UUID" value={result.outcome.uuid} />
               <p>Přijato: {result.outcome.receivedAt}</p>
               <WarningList warnings={result.outcome.warnings} />
             </AlertDescription>

@@ -45,6 +45,34 @@ function resolveHeaderInput(form: HeaderFormState): EetHeaderInput {
   };
 }
 
+/** Maps each `"field: message"` validator issue (see `struct-validator.ts`'s `validateStruct`) to
+ * a field-keyed lookup, so a message can be shown next to the offending form control instead of
+ * only in a flat list after Preview/Submit. */
+function toFieldErrorMap(issues: readonly string[]): Record<string, string> {
+  const errors: Record<string, string> = {};
+  for (const issue of issues) {
+    const separatorIndex = issue.indexOf(": ");
+    if (separatorIndex === -1) continue;
+    errors[issue.slice(0, separatorIndex)] = issue.slice(separatorIndex + 2);
+  }
+  return errors;
+}
+
+/** Live, per-field validation for the receipt form, recomputed on every change so errors surface
+ * next to the offending input instead of only after Preview/Submit. */
+export function getReceiptFieldErrors(form: ReceiptFormState): Record<string, string> {
+  const result = parseEetReceiptData(toReceiptDataInput(form));
+  return result.ok ? {} : toFieldErrorMap(result.error.issues);
+}
+
+/** Same idea as {@link getReceiptFieldErrors}, but for header fields. "auto" fields are always
+ * valid (they're disabled inputs seeded with a fresh placeholder), so only "manual" ones can ever
+ * actually show an error here. */
+export function getHeaderFieldErrors(form: HeaderFormState): Record<string, string> {
+  const result = parseHeader(resolveHeaderInput(form));
+  return result.ok ? {} : toFieldErrorMap(result.error.issues);
+}
+
 export type ValidationFailure =
   | { readonly kind: "invalidReceipt"; readonly issues: readonly string[] }
   | { readonly kind: "invalidHeader"; readonly issues: readonly string[] };

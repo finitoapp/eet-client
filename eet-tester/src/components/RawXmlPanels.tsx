@@ -11,13 +11,17 @@ interface XmlPanelProps {
 
 function XmlPanel({ title, xml }: XmlPanelProps) {
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   const handleCopy = async () => {
     if (xml === undefined) return;
-    await navigator.clipboard.writeText(xml);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(xml);
+      setStatus("copied");
+    } catch {
+      setStatus("failed");
+    }
+    setTimeout(() => setStatus("idle"), 2000);
   };
 
   return (
@@ -33,7 +37,9 @@ function XmlPanel({ title, xml }: XmlPanelProps) {
         {xml !== undefined && (
           <Button variant="ghost" size="sm" onClick={() => void handleCopy()}>
             <CopyIcon />
-            {copied ? "Zkopírováno" : "Kopírovat"}
+            {status === "copied" && "Zkopírováno"}
+            {status === "failed" && "Kopírování selhalo"}
+            {status === "idle" && "Kopírovat"}
           </Button>
         )}
       </div>
