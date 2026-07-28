@@ -10,9 +10,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 export interface SubmissionSettingsSectionProps {
   readonly value: HeaderFormState;
   readonly onChange: (value: HeaderFormState) => void;
+  /** Live per-field validation messages, keyed by `HeaderFormState`/`EetHeaderInput` field name —
+   * see `getHeaderFieldErrors` in `lib/eet.ts`. */
+  readonly fieldErrors: Record<string, string>;
 }
 
-export function SubmissionSettingsSection({ value, onChange }: SubmissionSettingsSectionProps) {
+export function SubmissionSettingsSection({
+  value,
+  onChange,
+  fieldErrors,
+}: SubmissionSettingsSectionProps) {
   return (
     <Card>
       <CardHeader>
@@ -45,16 +52,20 @@ export function SubmissionSettingsSection({ value, onChange }: SubmissionSetting
 
         <div className="grid gap-3 sm:grid-cols-2">
           <HeaderModeField
+            id="header-uuid"
             label="UUID zprávy (uuid)"
             mode={value.uuidMode}
             value={value.uuid}
+            error={fieldErrors["uuid"]}
             onModeChange={(uuidMode) => onChange({ ...value, uuidMode })}
             onValueChange={(uuid) => onChange({ ...value, uuid })}
           />
           <HeaderModeField
+            id="header-sent-at"
             label="Datum a čas odeslání (sentAt)"
             mode={value.sentAtMode}
             value={value.sentAt}
+            error={fieldErrors["sentAt"]}
             onModeChange={(sentAtMode) => onChange({ ...value, sentAtMode })}
             onValueChange={(sentAt) => onChange({ ...value, sentAt })}
           />
@@ -65,24 +76,28 @@ export function SubmissionSettingsSection({ value, onChange }: SubmissionSetting
 }
 
 interface HeaderModeFieldProps {
+  readonly id: string;
   readonly label: string;
   readonly mode: HeaderFieldMode;
   readonly value: string;
+  readonly error?: string | undefined;
   readonly onModeChange: (mode: HeaderFieldMode) => void;
   readonly onValueChange: (value: string) => void;
 }
 
 function HeaderModeField({
+  id,
   label,
   mode,
   value,
+  error,
   onModeChange,
   onValueChange,
 }: HeaderModeFieldProps) {
   return (
     <div className="grid gap-1.5">
       <div className="flex items-center justify-between">
-        <Label>{label}</Label>
+        <Label htmlFor={id}>{label}</Label>
         <Select value={mode} onValueChange={(next) => next !== null && onModeChange(next)}>
           <SelectTrigger size="sm">
             <SelectValue />
@@ -94,10 +109,18 @@ function HeaderModeField({
         </Select>
       </div>
       <Input
+        id={id}
         value={value}
         disabled={mode === "auto"}
+        aria-invalid={error !== undefined}
+        aria-describedby={error !== undefined ? `${id}-error` : undefined}
         onChange={(event) => onValueChange(event.target.value)}
       />
+      {error !== undefined && (
+        <p id={`${id}-error`} className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

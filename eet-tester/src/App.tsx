@@ -1,4 +1,5 @@
 import { EetEndpoint, type ResponseSignatureVerifier } from "@finitoapp/eet-client";
+import { RotateCcwIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionBar } from "@/components/ActionBar.tsx";
 import { CertificateSection } from "@/components/CertificateSection.tsx";
@@ -8,6 +9,7 @@ import { RawXmlPanels } from "@/components/RawXmlPanels.tsx";
 import { ReceiptForm } from "@/components/ReceiptForm.tsx";
 import { ResultCard } from "@/components/ResultCard.tsx";
 import { SubmissionSettingsSection } from "@/components/SubmissionSettingsSection.tsx";
+import { Button } from "@/components/ui/button.tsx";
 import { VerifierSection } from "@/components/VerifierSection.tsx";
 import { createInsecureAlwaysTrustVerifier, type LoadedSigner } from "@/lib/certificates.ts";
 import {
@@ -18,7 +20,13 @@ import {
   type HeaderFormState,
   type ReceiptFormState,
 } from "@/lib/defaults.ts";
-import { previewUnsignedXml, type SubmitResult, submitReceipt } from "@/lib/eet.ts";
+import {
+  getHeaderFieldErrors,
+  getReceiptFieldErrors,
+  previewUnsignedXml,
+  type SubmitResult,
+  submitReceipt,
+} from "@/lib/eet.ts";
 import { loadPersistedState, savePersistedState } from "@/lib/storage.ts";
 
 interface AttemptDisplay {
@@ -46,6 +54,9 @@ export function App() {
     savePersistedState({ receiptForm, headerForm, endpointForm });
   }, [receiptForm, headerForm, endpointForm]);
 
+  const receiptFieldErrors = useMemo(() => getReceiptFieldErrors(receiptForm), [receiptForm]);
+  const headerFieldErrors = useMemo(() => getHeaderFieldErrors(headerForm), [headerForm]);
+
   const [signer, setSigner] = useState<LoadedSigner | undefined>(undefined);
   const [verifier, setVerifier] = useState<ResponseSignatureVerifier | undefined>(undefined);
   const [insecureVerification, setInsecureVerification] = useState(false);
@@ -64,7 +75,19 @@ export function App() {
       resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [attempt]);
 
-  const canSubmit = signer !== undefined && verifier !== undefined && !submitting;
+  const canSubmit =
+    signer !== undefined &&
+    verifier !== undefined &&
+    !submitting &&
+    Object.keys(receiptFieldErrors).length === 0 &&
+    Object.keys(headerFieldErrors).length === 0;
+
+  const handleReset = () => {
+    setReceiptForm(createDefaultReceiptForm());
+    setHeaderForm(createDefaultHeaderForm());
+    setEndpointForm(createDefaultEndpointForm());
+    setAttempt(undefined);
+  };
 
   const handlePreview = () => {
     const preview = previewUnsignedXml(receiptForm, headerForm);
@@ -110,7 +133,13 @@ export function App() {
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4 p-4 sm:p-6">
       <header className="grid gap-1">
-        <h1 className="text-2xl font-semibold">EET tester</h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold">EET tester</h1>
+          <Button variant="outline" size="sm" onClick={handleReset} disabled={submitting}>
+            <RotateCcwIcon />
+            Reset formuláře
+          </Button>
+        </div>
         <p className="text-sm text-muted-foreground">
           Ruční vyzkoušení <code>@finitoapp/eet-client</code> v prohlížeči — nahrajte pokladní
           certifikát, vyplňte datovou zprávu a odešlete ji do EET playgroundu.
@@ -132,8 +161,12 @@ export function App() {
       </div>
 
       <EndpointSection value={endpointForm} onChange={setEndpointForm} />
-      <ReceiptForm value={receiptForm} onChange={setReceiptForm} />
-      <SubmissionSettingsSection value={headerForm} onChange={setHeaderForm} />
+      <ReceiptForm value={receiptForm} onChange={setReceiptForm} fieldErrors={receiptFieldErrors} />
+      <SubmissionSettingsSection
+        value={headerForm}
+        onChange={setHeaderForm}
+        fieldErrors={headerFieldErrors}
+      />
 
       <ActionBar
         signerReady={signer !== undefined}
