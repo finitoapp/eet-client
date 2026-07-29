@@ -14,8 +14,6 @@ once it reaches its first published release.
 * add experimental CA EET renewal client (@finitoapp/eet-client/caeet-renewal) ([4ee2b84](https://github.com/finitoapp/eet-client/commit/4ee2b84bb07eccd0526137d6a72c0770b4358d16))
 * add pure-JS PKCS[#12](https://github.com/finitoapp/eet-client/issues/12) parser (@finitoapp/eet-client/pkcs12) ([68c1c66](https://github.com/finitoapp/eet-client/commit/68c1c66d7f6db21661dd9ca623dadcdac3291830))
 
-## [Unreleased]
-
 ## [0.1.0] - 2026-07-26
 
 První publikované vydání. Nízkoúrovňové TypeScript SDK pro Elektronickou
@@ -23,5 +21,4 @@ evidenci tržeb 2.0 (EET) — sestavení, podepsání (XMLDSig/WS-Security),
 odeslání a ověření podpisu odpovědi `OdeslaniTrzby` zprávy, bez runtime
 závislostí. Podrobný rozsah viz README "Rozsah první verze".
 
-[Unreleased]: https://github.com/finitoapp/eet-client/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/finitoapp/eet-client/releases/tag/v0.1.0
