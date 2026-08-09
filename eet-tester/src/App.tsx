@@ -3,7 +3,6 @@ import { RotateCcwIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionBar } from "@/components/ActionBar.tsx";
 import { CertificateSection } from "@/components/CertificateSection.tsx";
-import { CorsWarning } from "@/components/CorsWarning.tsx";
 import { EndpointSection } from "@/components/EndpointSection.tsx";
 import { RawXmlPanels } from "@/components/RawXmlPanels.tsx";
 import { ReceiptForm } from "@/components/ReceiptForm.tsx";
@@ -145,8 +144,6 @@ export function App() {
           certifikát, vyplňte datovou zprávu a odešlete ji do EET playgroundu.
         </p>
       </header>
-
-      <CorsWarning />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <CertificateSection onSignerChange={setSigner} />
