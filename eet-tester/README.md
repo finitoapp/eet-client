@@ -17,21 +17,6 @@ cd eet-tester
 bun run dev
 ```
 
-## CORS — čtěte, než začnete odesílat
-
-`pg.trzbyeet.gov.cz` (EET playground) neposílá CORS hlavičky povolující cizí
-origin. Prohlížeč proto `submit()` volaný přímo odsud preflightem zablokuje,
-pokud si kontrolu CORS záměrně nevypnete pro efemérní testovací session:
-
-```sh
-# Linux, dočasný samostatný profil — nikdy takto nepoužívejte běžný prohlížeč
-chromium --disable-web-security --user-data-dir="$(mktemp -d)" http://localhost:5173
-```
-
-Aplikace na to sama upozorňuje bannerem v hlavičce stránky. Toto omezení se
-řeší s EET supportem, viz [hlavní README, sekce „Použití v
-prohlížeči"](../README.md#použití-v-prohlížeči).
-
 ## Testovací certifikát
 
 Repozitář obsahuje playground fixtury v [`../caeet/`](../caeet/)

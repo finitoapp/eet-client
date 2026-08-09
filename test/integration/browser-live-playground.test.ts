@@ -12,13 +12,9 @@ import { loadPlaygroundP12Signer } from "./p12-helper.ts";
  * verification — inside a real, headless Chromium tab, against the real EET playground
  * (`https://pg.trzbyeet.gov.cz`).
  *
- * The playground does not send CORS headers granting cross-origin access (see
- * `browser-cors.test.ts`), so a real browser's preflight would block the request before it ever
- * left the page. This test launches Chromium with `--disable-web-security` to suppress that
- * enforcement. That flag is scoped entirely to this test's own throwaway, headless Chromium
- * instance — Playwright always launches with a fresh temporary profile, never a real user's
- * browser or persistent data — so it disables CORS only for this one automated session, never
- * for the shipped SDK (which sends no CORS-relevant code at all) or any real integrator.
+ * The playground sends CORS headers granting cross-origin access (see `browser-cors.test.ts`),
+ * so this runs with CORS enforcement fully intact — no `--disable-web-security` or other
+ * enforcement-suppressing flag is needed for the request itself to succeed.
  *
  * Disabled by default and in CI. Enable with `EET_TEST_LIVE_PLAYGROUND_BROWSER=1 bun test
  * test/integration`. Requires `openssl` in PATH (see `p12-helper.ts`), network access to the
@@ -75,7 +71,7 @@ interface EetBrowserHarnessWindow {
         headless: true,
         // --no-sandbox is required in sandboxed/containerized dev environments without a working
         // user namespace; harmless for this throwaway, headless-only instance.
-        args: ["--disable-web-security", "--no-sandbox"],
+        args: ["--no-sandbox"],
       });
       try {
         const page = await browser.newPage();
