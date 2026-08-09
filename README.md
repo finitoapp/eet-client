@@ -816,8 +816,9 @@ explicitně proměnnou prostředí — pro každou kategorii existuje i vlastní
 # v docs/reference/eet-2.0/*.eet.v4.req.xml.
 bun run test:integration:p12       # EET_TEST_P12=1 bun test test/integration
 
-# Ověření, že reálný endpoint EET neposílá CORS hlavičky (viz
-# "Použití v prohlížeči" výše) — bez pokladního certifikátu, jen síť.
+# Ověření, že reálný endpoint EET posílá CORS hlavičky povolující volání z
+# libovolného origin (viz "Použití v prohlížeči" výše) — bez pokladního
+# certifikátu, jen síť.
 bun run test:integration:cors      # EET_TEST_CORS=1 bun test test/integration
 
 # Živé odeslání na https://pg.trzbyeet.gov.cz z Bunu a kryptografické ověření
@@ -963,19 +964,16 @@ pozor:
    });
    ```
 
-2. **CORS.** `pg.trzbyeet.gov.cz` aktuálně neposílá CORS hlavičky povolující
-   cizí origin, takže `submit()` volaný přímo z prohlížečové stránky preflight
-   prohlížeče zablokuje dřív, než požadavek vůbec odejde (ověřeno testem
-   `test/integration/browser-cors.test.ts`). Toto omezení se aktuálně řeší s
-   EET supportem a časem by mělo odpadnout; do té doby volejte EET z vlastního
-   backendu/proxy.
+2. **CORS.** `pg.trzbyeet.gov.cz` posílá CORS hlavičky
+   (`Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: POST,
+   OPTIONS`) povolující volání z libovolného origin, takže `submit()` lze
+   volat přímo z prohlížečové stránky bez vlastního backendu/proxy (ověřeno
+   testem `test/integration/browser-cors.test.ts`).
 
 `test/integration/browser-live-playground.test.ts` dokazuje, že celý běh
 (podpis, `fetch`, parsování, ověření podpisu) skutečně proběhne v reálném
-Chromiu — jde o opt-in test, který kvůli bodu 2 spouští prohlížeč s
-`--disable-web-security` (viz [Opt-in integrační testy](#opt-in-integrační-testy-s-caeetp12)
-výše); to je hack scoped jen na tento efemérní testovací proces, ne návod pro
-produkční kód.
+Chromiu, s plným vynucováním CORS (viz [Opt-in integrační
+testy](#opt-in-integrační-testy-s-caeetp12) výše).
 
 ## Architektura
 
