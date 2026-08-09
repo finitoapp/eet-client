@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 once it reaches its first published release.
 
+## [0.3.0](https://github.com/finitoapp/eet-client/compare/v0.2.0...v0.3.0) (2026-08-09)
+
+
+### Features
+
+* add eet-tester browser demo app with CI checks and Vercel deploy ([#13](https://github.com/finitoapp/eet-client/issues/13)) ([c417bd3](https://github.com/finitoapp/eet-client/commit/c417bd306bc00793f7c5b09e90cd2e32f6cd95fa))
+* **eet-tester:** add live field validation, reset button, copy actions ([#15](https://github.com/finitoapp/eet-client/issues/15)) ([fda9e22](https://github.com/finitoapp/eet-client/commit/fda9e2229c9bb3270809e41b1ed985909bdd29cb))
+
+
+### Bug Fixes
+
+* reflect that the EET playground now allows cross-origin browser access ([#21](https://github.com/finitoapp/eet-client/issues/21)) ([8855beb](https://github.com/finitoapp/eet-client/commit/8855beb10ef6d89f01e82ad47c2d46f9ecbc763d))
+
 ## [0.2.0](https://github.com/finitoapp/eet-client/compare/v0.1.0...v0.2.0) (2026-07-27)
 
 
