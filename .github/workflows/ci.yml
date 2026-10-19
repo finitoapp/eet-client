@@ -36,7 +36,7 @@ jobs:
         with:
           name: coverage
           path: coverage/lcov.info
-      - run: bun run build
+      # check:package runs the build via precheck:package.
       - run: bun run check:package
 
   test-runtimes:
