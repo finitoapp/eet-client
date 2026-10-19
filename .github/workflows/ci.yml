@@ -92,12 +92,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run check:tester
 
-  # Opt-in integration suites (real EET playground endpoint, caeet/*.p12 signing, Playwright) —
-  # see README "Opt-in integrační testy s caeet/*.p12" and CONTRIBUTING.md. Runs on the same
-  # triggers as `verify`/`test-runtimes` (plus manual workflow_dispatch), but each category is
-  # `continue-on-error` so a flaky/unreachable external playground never blocks a merge — this
-  # job only surfaces drift (playground changes, expired legacy openssl providers, Playwright API
-  # changes) as a visible, non-blocking check.
+  # Local PKCS#12 integration failures fail CI; network suites remain non-blocking.
   integration:
     runs-on: ubuntu-latest
     strategy:
@@ -128,4 +123,4 @@ jobs:
         run: bunx playwright install --with-deps chromium
       - name: bun run ${{ matrix.script }}
         run: bun run ${{ matrix.script }}
-        continue-on-error: true
+        continue-on-error: ${{ matrix.name != 'p12' }}
