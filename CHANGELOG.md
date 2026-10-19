@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 once it reaches its first published release.
 
+## [0.4.0](https://github.com/finitoapp/eet-client/compare/v0.3.0...v0.4.0) (2026-10-19)
+
+
+### Features
+
+* add optional React Native crypto backend ([#36](https://github.com/finitoapp/eet-client/issues/36)) ([fb10eab](https://github.com/finitoapp/eet-client/commit/fb10eab8960d2f2fa4af9af104855d7bc303e118))
+
 ## [0.3.0](https://github.com/finitoapp/eet-client/compare/v0.2.0...v0.3.0) (2026-08-09)
 
 
