@@ -50,6 +50,7 @@ export function App() {
   }));
 
   useEffect(() => {
+    // Persistence is optional; keep the form usable when browser storage is unavailable.
     savePersistedState({ receiptForm, headerForm, endpointForm });
   }, [receiptForm, headerForm, endpointForm]);
 
