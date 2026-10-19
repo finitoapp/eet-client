@@ -28,6 +28,7 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 
 - [Podporované runtimes](#podporované-runtimes)
 - [Instalace](#instalace)
+- [Endpointy](#endpointy)
 - [React Native](#react-native)
 - [Rychlý start](#rychlý-start)
   - [`signer` z reálného `.p12` souboru od GFŘ](#signer-z-reálného-p12-souboru-od-gfř)
@@ -85,6 +86,22 @@ npm install @finitoapp/eet-client
 # nebo (Deno)
 deno add npm:@finitoapp/eet-client
 ```
+
+## Endpointy
+
+Cílové prostředí se volí explicitně v `createEetClient({ endpoint, ... })`:
+
+| Konstanta | URL |
+| --- | --- |
+| `EetEndpoint.production` | `https://trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4` |
+| `EetEndpoint.playground` | `https://pg.trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4` |
+
+Produkční URL zveřejňuje GFŘ v dokumentu
+[Přístupové a provozní informace – produkční prostředí, verze 1.1, kapitola 2.1](https://eet.gov.cz/assets/cs/cmsmedia/pro-vyvojare/EET_pristupove_provozni_informace_produk-2.pdf).
+Podle kapitoly 4.1 začíná přechodný provoz 1. 11. 2026 a běžný provoz
+1. 1. 2027. Pro produkci použijte produkční pokladní certifikát a důvěru
+v podpisový certifikát produkčního serveru; playground má vlastní certifikáty.
+Parametr `endpoint` nadále přijímá i vlastní URL.
 
 ## React Native
 
@@ -1005,8 +1022,9 @@ ve zdrojovém dokumentu.
 
 - **`baseUrl` není nikde publikované.** Zdrojový dokument říká jen, že „URL
   pro přístup k API jsou součástí definice API“ (souboru `docs/reference/eet-2.0/caeetapi_jwt.yml`),
-  který ale s tímto SDK není distribuovaný ani jinak veřejně dostupný — stejně
-  jako u produkčního EET SOAP endpointu musíte `baseUrl` získat a dodat sami.
+  který ale s tímto SDK není distribuovaný ani jinak veřejně dostupný.
+  `baseUrl` tohoto API musíte získat a dodat sami; jde o jiné rozhraní než
+  EET SOAP endpointy uvedené v sekci [Endpointy](#endpointy).
 - **Přesný tvar odpovědi mimo `reqId`/`pollAfterSeconds` není publikovaný.**
   Zdrojový dokument doslovně jmenuje jen `.reqId` (`POST /request/renew`) a
   `.pollAfterSeconds` (`GET .../status`) — stavový výčet
@@ -1071,9 +1089,9 @@ mimo předdefinovaných/číselných odkazů jsou odmítnuty) a před vrácením
 
 ## Rozsah první verze
 
-Není součástí: automatické retry/fronta, doménové workflow pokladny/účtenky,
-produkční endpoint (dokud jej GFŘ oficiálně nezveřejní — vždy jej dodá
-integrátor konfigurací). Načítání PKCS#12 (`.p12`/PFX) má vlastní, samostatný
+Není součástí: automatické retry/fronta a doménové workflow pokladny/účtenky.
+Produkční i playground endpoint jsou dostupné přes `EetEndpoint` (viz
+[Endpointy](#endpointy)). Načítání PKCS#12 (`.p12`/PFX) má vlastní, samostatný
 podcestový modul (`@finitoapp/eet-client/pkcs12`, viz [Nastavení klíče z
 reálného pokladního certifikátu (.p12/PFX)](#nastavení-klíče-z-reálného-pokladního-certifikátu-p12pfx))
 — hlavní vstupní bod ho stále neimportuje. Automatizovaná obnova

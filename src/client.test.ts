@@ -96,7 +96,7 @@ describe("End-to-end submit() with a Web Crypto-only signer and verifier", () =>
     }) as unknown as typeof fetch;
 
     const client = createEetClient({
-      endpoint: "https://pg.trzbyeet.gov.cz:443/eet/services/EETServiceSOAP/v4",
+      endpoint: "https://pg.trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4",
       signer,
       responseSignatureVerifier: verifier,
       fetch: fetchImpl,
@@ -128,7 +128,7 @@ describe("submit() with a failing signer", () => {
     }) as unknown as typeof fetch;
 
     const client = createEetClient({
-      endpoint: "https://pg.trzbyeet.gov.cz:443/eet/services/EETServiceSOAP/v4",
+      endpoint: "https://pg.trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4",
       signer: failingSigner,
       responseSignatureVerifier: verifier,
       fetch: fetchImpl,
@@ -162,7 +162,7 @@ describe("createEetClient input validation", () => {
    */
   async function validOptions(): Promise<EetClientOptions> {
     return {
-      endpoint: "https://pg.trzbyeet.gov.cz:443/eet/services/EETServiceSOAP/v4",
+      endpoint: "https://pg.trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4",
       signer: await createTestSigner("test-signer.cert.der", "test-signer.key.pk8"),
       responseSignatureVerifier: createCryptoKeyResponseSignatureVerifier(
         readFixture("test-signer.pub.spki.der"),
