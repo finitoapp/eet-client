@@ -13,7 +13,7 @@ import {
   SOAP_NAMESPACE,
   WSU_NAMESPACE,
 } from "./namespaces.ts";
-import { sha256 } from "./webcrypto.ts";
+import { type EetCryptoBackend, sha256 } from "./webcrypto.ts";
 import { canonicalizeToString } from "./xml/c14n.ts";
 import { type XmlAttribute, type XmlElement, xmlElement, xmlText } from "./xml/model.ts";
 
@@ -74,6 +74,7 @@ export async function buildSignedRequest(
   data: EetReceiptData,
   header: EetHeader,
   signer: EetSigner,
+  backend?: EetCryptoBackend,
 ): Promise<string> {
   const trzba = buildTrzbaElement(data, header);
   const body = xmlElement(
@@ -85,7 +86,7 @@ export async function buildSignedRequest(
   );
 
   const bodyCanonicalString = canonicalizeToString(body);
-  const bodyDigest = await sha256(new TextEncoder().encode(bodyCanonicalString));
+  const bodyDigest = await sha256(new TextEncoder().encode(bodyCanonicalString), backend);
   const digestBase64 = encodeBase64(bodyDigest);
 
   const signedInfo = buildSignedInfo(digestBase64);

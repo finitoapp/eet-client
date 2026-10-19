@@ -1,3 +1,4 @@
+import type { EetCryptoBackend } from "../core/webcrypto.ts";
 import type { EetSigner } from "./signer.ts";
 import type { ResponseSignatureVerifier } from "./verifier.ts";
 
@@ -11,6 +12,7 @@ export const EetEndpoint = {
 } as const;
 
 export interface EetClientOptions {
+  readonly cryptoBackend?: EetCryptoBackend;
   /** Target `OdeslaniTrzby` SOAP endpoint URL, e.g. {@link EetEndpoint.playground}. */
   readonly endpoint: string;
   /** Adapter providing the taxpayer's certificate and signing capability. */

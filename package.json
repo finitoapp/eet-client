@@ -89,6 +89,16 @@
         "types": "./dist/pkcs12.d.cts",
         "default": "./dist/pkcs12.cjs"
       }
+    },
+    "./react-native": {
+      "import": {
+        "types": "./dist/react-native.d.mts",
+        "default": "./dist/react-native.mjs"
+      },
+      "require": {
+        "types": "./dist/react-native.d.cts",
+        "default": "./dist/react-native.cjs"
+      }
     }
   },
   "scripts": {
@@ -115,10 +125,14 @@
     "provenance": true
   },
   "peerDependencies": {
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "react-native-quick-crypto": "^1.0.0"
   },
   "peerDependenciesMeta": {
     "zod": {
+      "optional": true
+    },
+    "react-native-quick-crypto": {
       "optional": true
     }
   },

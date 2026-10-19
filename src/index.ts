@@ -18,6 +18,7 @@ export {
   createCryptoKeySigner,
 } from "./core/crypto-adapters.ts";
 export { type ParseResponseContext, parseAndVerifyResponse } from "./core/parse-response.ts";
+export type { EetCryptoBackend } from "./core/webcrypto.ts";
 export {
   type Err,
   err,

@@ -15,6 +15,7 @@
  * the offending OID rather than silently misbehaving.
  */
 import { bytesEqual, constantTimeEqual } from "../core/bytes.ts";
+import { type EetCryptoBackend, webCryptoBackend } from "../core/webcrypto.ts";
 import { type Result, tryAsync } from "../result.ts";
 import {
   contentBytes,
@@ -140,6 +141,7 @@ async function decryptPbe(
   salt: Uint8Array,
   iterations: number,
   encrypted: Uint8Array,
+  backend: EetCryptoBackend,
 ): Promise<Uint8Array> {
   switch (oid) {
     case OID.pbeShaAnd40BitRc2Cbc:
@@ -147,8 +149,8 @@ async function decryptPbe(
       const effectiveKeyBits = oid === OID.pbeShaAnd40BitRc2Cbc ? 40 : 128;
       const keyLength = effectiveKeyBits / 8;
       const [key, iv] = await Promise.all([
-        derivePkcs12Bits(password, salt, iterations, PKCS12_KDF_ID.key, keyLength),
-        derivePkcs12Bits(password, salt, iterations, PKCS12_KDF_ID.iv, 8),
+        derivePkcs12Bits(password, salt, iterations, PKCS12_KDF_ID.key, keyLength, backend),
+        derivePkcs12Bits(password, salt, iterations, PKCS12_KDF_ID.iv, 8, backend),
       ]);
       return pkcs5Unpad(rc2CbcDecrypt(key, effectiveKeyBits, iv, encrypted), 8);
     }
@@ -156,8 +158,8 @@ async function decryptPbe(
     case OID.pbeShaAnd3KeyTripleDesCbc: {
       const keyLength = oid === OID.pbeShaAnd2KeyTripleDesCbc ? 16 : 24;
       const [key, iv] = await Promise.all([
-        derivePkcs12Bits(password, salt, iterations, PKCS12_KDF_ID.key, keyLength),
-        derivePkcs12Bits(password, salt, iterations, PKCS12_KDF_ID.iv, 8),
+        derivePkcs12Bits(password, salt, iterations, PKCS12_KDF_ID.key, keyLength, backend),
+        derivePkcs12Bits(password, salt, iterations, PKCS12_KDF_ID.iv, 8, backend),
       ]);
       return pkcs5Unpad(tripleDesCbcDecrypt(key, iv, encrypted), 8);
     }
@@ -205,6 +207,7 @@ async function decryptShroudedKeyBag(
   password: string,
   safeContentsBytes: Uint8Array,
   bagValue: DerNode,
+  backend: EetCryptoBackend,
 ): Promise<Uint8Array> {
   const children = readChildren(safeContentsBytes, bagValue.contentStart, bagValue.contentEnd);
   const algorithm = expectChild(children, 0, DER_TAG.sequence);
@@ -213,7 +216,7 @@ async function decryptShroudedKeyBag(
     expectChild(children, 1, DER_TAG.octetString),
   );
   const { oid, salt, iterations } = readPbeAlgorithm(safeContentsBytes, algorithm);
-  return decryptPbe(password, oid, salt, iterations, encryptedData);
+  return decryptPbe(password, oid, salt, iterations, encryptedData, backend);
 }
 
 /** Parses `SafeContents ::= SEQUENCE OF SafeBag` (already-decrypted plaintext) and collects certs/keys into `into`. */
@@ -221,6 +224,7 @@ async function collectSafeBags(
   password: string,
   safeContentsBytes: Uint8Array,
   into: CollectedBags,
+  backend: EetCryptoBackend,
 ): Promise<void> {
   const root = readTlv(safeContentsBytes, 0);
   expectTag(root, DER_TAG.sequence, { constructed: true });
@@ -260,7 +264,7 @@ async function collectSafeBags(
     } else if (bagId === OID.keyBag) {
       into.privateKey = { der: fullBytes(safeContentsBytes, bagValue), ...attributes };
     } else if (bagId === OID.pkcs8ShroudedKeyBag) {
-      const der = await decryptShroudedKeyBag(password, safeContentsBytes, bagValue);
+      const der = await decryptShroudedKeyBag(password, safeContentsBytes, bagValue, backend);
       into.privateKey = { der, ...attributes };
     } else {
       throw new Error(
@@ -270,7 +274,11 @@ async function collectSafeBags(
   }
 }
 
-async function parsePkcs12Unsafe(data: Uint8Array, password: string): Promise<Pkcs12Contents> {
+async function parsePkcs12Unsafe(
+  data: Uint8Array,
+  password: string,
+  backend: EetCryptoBackend,
+): Promise<Pkcs12Contents> {
   const root = readTlv(data, 0);
   expectTag(root, DER_TAG.sequence, { constructed: true });
   const topLevel = readChildren(data, root.contentStart, root.contentEnd);
@@ -318,17 +326,15 @@ async function parsePkcs12Unsafe(data: Uint8Array, password: string): Promise<Pk
   const macIterations =
     iterationsNode === undefined ? 1 : Number(readInteger(data, iterationsNode));
 
-  const macKey = await derivePkcs12Bits(password, macSalt, macIterations, PKCS12_KDF_ID.mac, 20);
-  const hmacKey = await crypto.subtle.importKey(
-    "raw",
-    macKey as BufferSource,
-    { name: "HMAC", hash: "SHA-1" },
-    false,
-    ["sign"],
+  const macKey = await derivePkcs12Bits(
+    password,
+    macSalt,
+    macIterations,
+    PKCS12_KDF_ID.mac,
+    20,
+    backend,
   );
-  const actualMac = new Uint8Array(
-    await crypto.subtle.sign("HMAC", hmacKey, authSafeBytes as BufferSource),
-  );
+  const actualMac = await backend.hmacSha1(macKey, authSafeBytes);
   if (!constantTimeEqual(actualMac, expectedMac)) {
     throw createPkcs12InvalidMacError({
       message: "PKCS#12 MAC verification failed (wrong password, or corrupted file).",
@@ -369,12 +375,19 @@ async function parsePkcs12Unsafe(data: Uint8Array, password: string): Promise<Pk
       }
       const encryptedContent = contentBytes(authSafeBytes, encryptedContentNode);
       const { oid: algOid, salt, iterations } = readPbeAlgorithm(authSafeBytes, algorithm);
-      safeContentsBytes = await decryptPbe(password, algOid, salt, iterations, encryptedContent);
+      safeContentsBytes = await decryptPbe(
+        password,
+        algOid,
+        salt,
+        iterations,
+        encryptedContent,
+        backend,
+      );
     } else {
       throw new Error(`Unsupported AuthenticatedSafe ContentInfo type "${oid}".`);
     }
 
-    await collectSafeBags(password, safeContentsBytes, collected);
+    await collectSafeBags(password, safeContentsBytes, collected, backend);
   }
 
   return { certificates: collected.certificates, privateKey: collected.privateKey };
@@ -388,9 +401,10 @@ async function parsePkcs12Unsafe(data: Uint8Array, password: string): Promise<Pk
 export async function parsePkcs12(
   data: Uint8Array,
   password: string,
+  backend: EetCryptoBackend = webCryptoBackend,
 ): Promise<Result<Pkcs12Contents, Pkcs12Error>> {
   return tryAsync(
-    () => parsePkcs12Unsafe(data, password),
+    () => parsePkcs12Unsafe(data, password, backend),
     (cause): Pkcs12Error =>
       isPkcs12Error(cause, "Pkcs12InvalidMacError")
         ? cause

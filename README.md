@@ -15,7 +15,8 @@ Node.js, Bunu, Denu i moderních prohlížečích. SDK sestaví a podepíše SOA
 požadavek dle WS-Security/XMLDSig, odešle jej a bezpečně vyhodnotí odpověď
 systému EET.
 
-Balíček nemá žádné runtime závislosti (`zod` je jen volitelný
+Balíček nemá žádné povinné runtime závislosti (`react-native-quick-crypto` je volitelný
+peer pro React Native; `zod` je volitelný
 `peerDependency` pro podcestu [`@finitoapp/eet-client/zod`](#finitoappeet-clientzod),
 který se do vašeho bundlu nedostane, pokud ho neimportujete) — celé XML/C14N a
 XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
@@ -27,6 +28,7 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 
 - [Podporované runtimes](#podporované-runtimes)
 - [Instalace](#instalace)
+- [React Native](#react-native)
 - [Rychlý start](#rychlý-start)
   - [`signer` z reálného `.p12` souboru od GFŘ](#signer-z-reálného-p12-souboru-od-gfř)
 - [Signer](#signer)
@@ -64,10 +66,12 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 | **Bun**      | aktuální stabilní verze                                                   |
 | **Deno**     | aktuální stabilní verze                                                   |
 | **Prohlížeč** | libovolný moderní, s `crypto.subtle` — viz [Použití v prohlížeči](#použití-v-prohlížeči) |
+| **Hermes / React Native** | volitelný export `/react-native` s explicitním Quick Crypto backendem; požadavky viz [React Native](#react-native) |
 
-SDK nikde nepoužívá Node-specifické API (žádný `node:` import) — jen
-standardní webové primitivy (`fetch`, `crypto.subtle`, `Uint8Array`,
-`TextEncoder`), proto se na všech čtyřech chová stejně. Kompatibilita
+SDK nikde nepoužívá Node-specifické API (žádný `node:` import). Sdílí
+implementaci protokolu a standardní webové primitivy (`fetch`, `Uint8Array`,
+`TextEncoder`, `TextDecoder`); kryptografii zajišťuje ve výchozím stavu
+`crypto.subtle`, v React Native explicitně předaný Quick Crypto backend. Kompatibilita
 Node.js/Bun/Deno je ověřená v CI proti stejné testovací sadě
 (`.github/workflows/ci.yml`); prohlížeč navíc pokrývá opt-in test v reálném
 Chromiu (viz [Použití v prohlížeči](#použití-v-prohlížeči)).
@@ -81,6 +85,82 @@ npm install @finitoapp/eet-client
 # nebo (Deno)
 deno add npm:@finitoapp/eet-client
 ```
+
+## React Native
+
+Volitelný export `@finitoapp/eet-client/react-native` sdílí XML, PKCS#12 parser,
+podepisování, transport a kontrolu odpovědí s ostatními runtimes. Kryptografii
+předává aplikace explicitně; SDK neimportuje nativní moduly a nemění globální
+`crypto`, `Buffer` ani jiné objekty. Instalace a importy pro web a Node proto
+nativní závislosti nepotřebují.
+
+```sh
+bun add @finitoapp/eet-client react-native-quick-crypto@^1 react-native-nitro-modules react-native-quick-base64
+```
+
+Proveďte nativní instalaci podle [návodu Quick Crypto](https://github.com/margelo/react-native-quick-crypto#installation)
+a aplikaci znovu sestavte (u Expo použijte development build, nikoli Expo Go).
+Nevolejte `QuickCrypto.install()` a nenastavujte alias `crypto` v Metro.
+Runtime musí poskytovat `fetch`, `AbortController`, `TextEncoder` a UTF-8
+`TextDecoder`; jejich dostupnost závisí na verzi RN/Expo/Hermes. Případné
+chybějící textové API zajistí aplikace, SDK globální polyfilly neinstaluje.
+
+```ts
+import QuickCrypto from "react-native-quick-crypto";
+import {
+  createReactNativeCrypto,
+  EetEndpoint,
+  getOrThrow,
+  pickPrivateKeyCertificate,
+} from "@finitoapp/eet-client/react-native";
+import type { EetReceiptData } from "@finitoapp/eet-client";
+
+const native = createReactNativeCrypto(QuickCrypto);
+
+async function submitReceipt(
+  p12: Uint8Array,
+  password: string,
+  trustedServerCertificateDer: Uint8Array,
+  trustedServerSpkiDer: Uint8Array,
+  receipt: EetReceiptData,
+) {
+  const contents = getOrThrow(await native.parsePkcs12(p12, password));
+  const certificate = pickPrivateKeyCertificate(contents);
+  if (contents.privateKey === undefined || certificate === undefined) {
+    throw new Error("PKCS#12 contains no matching key and certificate.");
+  }
+  const privateKey = getOrThrow(native.importPrivateKey(contents.privateKey.der));
+  const publicKey = getOrThrow(native.importPublicKey(trustedServerSpkiDer));
+  const client = native.createEetClient({
+    endpoint: EetEndpoint.playground,
+    signer: native.createSigner(certificate.der, privateKey),
+    responseSignatureVerifier: native.createResponseSignatureVerifier(
+      publicKey,
+      trustedServerCertificateDer,
+    ),
+  });
+  return client.submit(receipt, { firstSubmission: true });
+}
+```
+
+`parsePkcs12`, `importPrivateKey` (PKCS#8 DER) a `importPublicKey` (SPKI DER)
+vracejí `Result`; ukázka používá `getOrThrow` na hranici aplikace.
+Podporované formáty PKCS#12 jsou stejné jako u exportu `pkcs12`.
+Verifier používá připnutí důvěryhodného serverového certifikátu a RSA-SHA256,
+nikoli validaci řetězce, expirace nebo revokace. SPKI musí odpovídat tomuto
+nezávisle ověřenému certifikátu, nikoli certifikátu pokladny.
+
+Do `native.createEetClient` lze předat i vlastní `ResponseSignatureVerifier`;
+SDK stále ověřuje digest odpovědi před jeho zavoláním přes předaný backend.
+Pro samostatné zpracování odpovědi použijte `native.parseAndVerifyResponse`.
+U `createEetClient` a `parseAndVerifyResponse` z hlavního exportu je nutné
+předat `cryptoBackend: native.cryptoBackend` explicitně. Adaptéry
+`createCryptoKeySigner` a `createCryptoKeyResponseSignatureVerifier` zůstávají
+určené pro Web Crypto.
+
+Automatické testy používají kompatibilní Node backend bez globálních `crypto`
+a `Buffer`. Ověřují PKCS#12, import klíčů, podpis požadavku, odpověď i vlastní
+verifier.
 
 ## Rychlý start
 

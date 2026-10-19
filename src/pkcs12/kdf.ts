@@ -7,6 +7,7 @@
  * module.
  */
 import { at, concatBytes } from "../core/bytes.ts";
+import { type EetCryptoBackend, webCryptoBackend } from "../core/webcrypto.ts";
 
 const SHA1_BLOCK_BYTES = 64; // "v" in the RFC.
 const SHA1_OUTPUT_BYTES = 20; // "u" in the RFC.
@@ -22,10 +23,6 @@ const SHA1_OUTPUT_BYTES = 20; // "u" in the RFC.
  * value while still bounding worst-case work to a few seconds.
  */
 const MAX_ITERATIONS = 2_000_000;
-
-async function sha1(data: Uint8Array): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest("SHA-1", data as BufferSource));
-}
 
 /** RFC 7292 Appendix B.1: password as a BMPString (UTF-16BE), NUL-terminated. */
 function passwordToBmpString(password: string): Uint8Array {
@@ -86,6 +83,7 @@ export async function derivePkcs12Bits(
   iterations: number,
   id: Pkcs12KdfId,
   outputLength: number,
+  backend: EetCryptoBackend = webCryptoBackend,
 ): Promise<Uint8Array> {
   if (iterations < 1 || iterations > MAX_ITERATIONS) {
     throw new Error(
@@ -105,7 +103,7 @@ export async function derivePkcs12Bits(
 
   for (let chunk = 0; chunk < chunkCount; chunk++) {
     let a = concatBytes(diversifier, I);
-    for (let round = 0; round < iterations; round++) a = await sha1(a);
+    for (let round = 0; round < iterations; round++) a = await backend.digest("SHA-1", a);
     output.set(a, chunk * SHA1_OUTPUT_BYTES);
 
     if (chunk < chunkCount - 1) {
