@@ -41,7 +41,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   deploy:
+    needs: checks
     runs-on: ubuntu-latest
     # Recorded as a GitHub Deployment (repo's "Environments"/"Deployments" tab, "View deployment"
     # link on the commit) — this `environment:` block is what triggers that, not a separate API

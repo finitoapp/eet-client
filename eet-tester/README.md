@@ -55,6 +55,10 @@ ručně přes „Run workflow"). Build se dělá přímo v CI přes Vercel CLI
 monorepa jako zbytek CI, což je nutné kvůli závislosti na sourozeneckém
 `../src` (viz komentář ve [`vite.config.ts`](./vite.config.ts)).
 
+Automatické i ruční nasazení nejprve spustí celý sdílený CI workflow pro
+stejný commit. Nasazení pokračuje pouze při jeho úspěchu; síťové integrační
+testy zůstávají podle pravidel CI neblokující.
+
 **Všechny `vercel` příkazy (link/pull/build/deploy) se spouští z kořene
 repozitáře, ne z `eet-tester/`** — projektovo nastavení „Root Directory"
 (`eet-tester`) si k aktuálnímu adresáři sám připojuje `vercel build`, takže
