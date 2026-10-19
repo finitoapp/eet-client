@@ -29,6 +29,8 @@ on:
     paths:
       - "eet-tester/**"
       - "src/**"
+      - "package.json"
+      - "bun.lock"
       - ".github/workflows/deploy-eet-tester.yml"
   workflow_dispatch:
 
@@ -57,6 +59,7 @@ jobs:
       name: production
       url: ${{ steps.deploy.outputs.url }}
     env:
+      VERCEL_CLI_VERSION: "64.3.1"
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -77,12 +80,12 @@ jobs:
       # verified to resolve correctly in this monorepo layout (see eet-tester/README.md).
       - run: bun install --frozen-lockfile
       - name: Pull Vercel project settings
-        run: bunx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+        run: bunx "vercel@$VERCEL_CLI_VERSION" pull --yes --environment=production --token="$VERCEL_TOKEN"
       - name: Build via Vercel CLI
-        run: bunx vercel@latest build --prod --token="$VERCEL_TOKEN"
+        run: bunx "vercel@$VERCEL_CLI_VERSION" build --prod --token="$VERCEL_TOKEN"
       - name: Deploy prebuilt output
         id: deploy
         run: |
-          url="$(bunx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          url="$(bunx "vercel@$VERCEL_CLI_VERSION" deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed to $url" | tee -a "$GITHUB_STEP_SUMMARY"
