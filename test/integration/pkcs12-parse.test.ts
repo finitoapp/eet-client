@@ -16,7 +16,8 @@ import { loadPlaygroundP12Signer } from "./p12-helper.ts";
  * everything it depends on (hand-rolled RC2, DES/3DES, and the PKCS#12 KDF) has its own
  * RFC/openssl-vector unit tests, but only a real GFŘ-issued file exercises the full combination.
  *
- * Disabled by default and in CI. Enable with `EET_TEST_P12=1 bun test test/integration`.
+ * Disabled in the default test run. Enable locally with `EET_TEST_P12=1 bun test test/integration`.
+ * CI runs this in the blocking `p12` integration job.
  * Requires `openssl` in PATH (see `p12-helper.ts`).
  */
 const ENABLED = process.env["EET_TEST_P12"] === "1";

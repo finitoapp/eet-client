@@ -24,7 +24,8 @@ import { loadPlaygroundP12Signer } from "./p12-helper.ts";
  * cash-register certificate/key extracted from `caeet/*.p12`, and checks its certificate chain
  * against the bundled playground CA (`caeet/ca_eet-*.crt`) using Node/Bun's `crypto.X509Certificate`.
  *
- * Disabled by default and in CI. Enable with `EET_TEST_P12=1 bun test test/integration`.
+ * Disabled in the default test run. Enable locally with `EET_TEST_P12=1 bun test test/integration`.
+ * CI runs this in the blocking `p12` integration job.
  * Requires `openssl` in PATH (see `p12-helper.ts`).
  */
 const ENABLED = process.env["EET_TEST_P12"] === "1";

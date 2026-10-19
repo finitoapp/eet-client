@@ -901,7 +901,7 @@ implementaci obou rozhraní, případně v izolovaném modulu/procesu.
 
 `test/integration/` obsahuje čtyři kategorie testů používajících skutečné
 pokladní certifikáty z `caeet/*.p12` a/nebo živou síť. Jsou vypnuté výchozím
-`bun test` i v CI (soubory `.p12` se v nich nikdy nezaznamenávají do výstupu
+`bun test` (soubory `.p12` se v nich nikdy nezaznamenávají do výstupu
 ani na disk — extrakce běží v paměti přes `openssl pkcs12`) a zapínají se
 explicitně proměnnou prostředí — pro každou kategorii existuje i vlastní
 `npm`/`bun` script:
@@ -927,6 +927,10 @@ bun run test:integration:live      # EET_TEST_LIVE_PLAYGROUND=1 bun test test/in
 # `bunx playwright install chromium`).
 bun run test:integration:live-browser  # EET_TEST_LIVE_PLAYGROUND_BROWSER=1 bun test test/integration
 ```
+
+CI spouští všechny čtyři kategorie samostatně. Lokální PKCS#12 testy jsou
+povinné; síťové testy CORS a živého odesílání jsou neblokující. Pro běh
+v prohlížeči CI instaluje Chromium včetně systémových závislostí.
 
 ## Automatizovaná obnova pokladního certifikátu (`@finitoapp/eet-client/caeet-renewal`)
 
