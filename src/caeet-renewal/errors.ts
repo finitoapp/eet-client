@@ -61,8 +61,7 @@ export const createCaeetJsonError = defineError("CaeetJsonError")<
 export type CaeetJsonError = ReturnType<typeof createCaeetJsonError>;
 
 /**
- * The response was well-formed JSON but missing a field this SDK relies on (e.g. `reqId` from
- * `POST /request/renew`).
+ * The response JSON did not match the required fields and formats of its OpenAPI schema.
  */
 export const createCaeetResponseSchemaError = defineError("CaeetResponseSchemaError")<
   { readonly message: string } & CaeetErrorContext

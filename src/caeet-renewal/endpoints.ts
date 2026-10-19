@@ -14,24 +14,18 @@ import type {
   CaeetRenewalStatus,
   CaeetUnfinishedRequests,
 } from "./types.ts";
+import {
+  isPkcs12Claim,
+  isRenewalRequest,
+  isRenewalStatus,
+  isUnfinishedRequests,
+} from "./validate-response.ts";
 
 /** Appends `path` to `baseUrl`'s path, preserving any query string/fragment `baseUrl` already has. */
 function joinUrl(baseUrl: string, path: string): string {
   const url = new URL(baseUrl);
   url.pathname = `${url.pathname.replace(/\/+$/, "")}${path}`;
   return url.toString();
-}
-
-function readStringField(body: unknown, field: string): string | undefined {
-  if (typeof body !== "object" || body === null) return undefined;
-  const value = (body as Record<string, unknown>)[field];
-  return typeof value === "string" ? value : undefined;
-}
-
-function readNumberField(body: unknown, field: string): number | undefined {
-  if (typeof body !== "object" || body === null) return undefined;
-  const value = (body as Record<string, unknown>)[field];
-  return typeof value === "number" ? value : undefined;
 }
 
 interface CaeetEndpointResult {
@@ -103,16 +97,16 @@ export async function requestCaeetRenewal(
   const result = await callCaeetEndpoint("/request/renew", "POST", options);
   if (!result.ok) return result;
 
-  const reqId = readStringField(result.value.body, "reqId");
-  if (reqId === undefined) {
+  const body = result.value.body;
+  if (!isRenewalRequest(body)) {
     return err(
       createCaeetResponseSchemaError({
-        message: "Response from POST /request/renew did not contain a string reqId field.",
+        message: "Response from POST /request/renew did not contain a valid UUID reqId field.",
         httpStatus: result.value.httpStatus,
       }),
     );
   }
-  return ok({ reqId, raw: result.value.body });
+  return ok({ reqId: body.reqId, raw: body });
 }
 
 /** `GET /request/{reqId}/status` — current status of a previously submitted renewal request. */
@@ -127,14 +121,30 @@ export async function getCaeetRenewalStatus(
   );
   if (!result.ok) return result;
 
-  const pollAfterSeconds = readNumberField(result.value.body, "pollAfterSeconds");
-  return ok({
-    ...(pollAfterSeconds !== undefined ? { pollAfterSeconds } : {}),
+  const body = result.value.body;
+  if (!isRenewalStatus(body)) {
+    return err(
+      createCaeetResponseSchemaError({
+        message: "Response from GET /request/{reqId}/status did not match RequestStatusDTO.",
+        httpStatus: result.value.httpStatus,
+      }),
+    );
+  }
+  const context = {
+    reqId: body.reqId,
     ...(result.value.retryAfterSeconds !== undefined
       ? { retryAfterSeconds: result.value.retryAfterSeconds }
       : {}),
-    raw: result.value.body,
-  });
+    raw: body,
+  };
+  switch (body.state) {
+    case "INPROCESS":
+      return ok({ ...context, state: body.state, pollAfterSeconds: body.pollAfterSeconds });
+    case "REJECTED":
+      return ok({ ...context, state: body.state, rejectedReason: body.rejectedReason });
+    default:
+      return ok({ ...context, state: body.state });
+  }
 }
 
 /**
@@ -152,7 +162,21 @@ export async function claimCaeetPkcs12(
     options,
   );
   if (!result.ok) return result;
-  return ok({ raw: result.value.body });
+  const body = result.value.body;
+  if (!isPkcs12Claim(body)) {
+    return err(
+      createCaeetResponseSchemaError({
+        message: "Response from POST /request/{reqId}/claim-download did not match Pkcs12DTO.",
+        httpStatus: result.value.httpStatus,
+      }),
+    );
+  }
+  return ok({
+    pkcs12: body.pkcs12,
+    password: body.password,
+    certificate: body.certificate,
+    raw: body,
+  });
 }
 
 /**
@@ -178,5 +202,14 @@ export async function listUnfinishedCaeetRequests(
 ): Promise<Result<CaeetUnfinishedRequests, CaeetError>> {
   const result = await callCaeetEndpoint("/request/not-finished", "GET", options);
   if (!result.ok) return result;
-  return ok({ raw: result.value.body });
+  const body = result.value.body;
+  if (!isUnfinishedRequests(body)) {
+    return err(
+      createCaeetResponseSchemaError({
+        message: "Response from GET /request/not-finished did not match ReqIdListDTO.",
+        httpStatus: result.value.httpStatus,
+      }),
+    );
+  }
+  return ok({ count: body.count, data: body.data, raw: body });
 }

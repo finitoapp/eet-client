@@ -930,20 +930,9 @@ bun run test:integration:live-browser  # EET_TEST_LIVE_PLAYGROUND_BROWSER=1 bun 
 
 ## Automatizovaná obnova pokladního certifikátu (`@finitoapp/eet-client/caeet-renewal`)
 
-**Experimentální — zatím neověřeno proti žádnému skutečnému prostředí.**
-`docs/reference/eet-2.0/caeetapi_jwt.yml` (OpenAPI popis tohoto API) jmenuje tři prostředí —
-`test.caeet.gov.cz`, `zkus.caeet.gov.cz` a produkční `caeet.gov.cz` — ale k
-26. 7. 2026 žádné z nich nemá veřejný DNS záznam (ověřeno přímo dotazem na
-`8.8.8.8`; zóna `caeet.gov.cz` je delegovaná, ale bez `A`/`AAAA`/`CNAME`
-záznamu na kterékoli z těchto jmen). Na rozdíl od EET SOAP odesílání tržby,
-kde je playground (`pg.trzbyeet.gov.cz`) reálně dostupný a tato SDK proti
-němu má opt-in integrační testy (viz [Opt-in integrační testy
-s `caeet/*.p12`](#opt-in-integrační-testy-s-caeetp12)), tento modul **nebyl
-ověřen jediným skutečným HTTP voláním** — implementace vychází čistě z
-referenčního dokumentu a `docs/reference/eet-2.0/caeetapi_jwt.yml`. Očekávejte, že se po prvním
-reálném ověření proti nasazenému prostředí objeví breaking changes (chybný
-odhad tvaru chyby, HTTP chování, apod.) — nezávisle na verzování zbytku SDK
-(viz [Verzování](#verzování)).
+**Experimentální modul.** Typy, validace odpovědí a adresy prostředí vycházejí
+z [OpenAPI specifikace CA EET](./docs/reference/eet-2.0/caeetapi_jwt.yml).
+Platí samostatná pravidla verzování tohoto modulu (viz [Verzování](#verzování)).
 
 Volitelný podcestový modul pro automatizovanou obnovu pokladního certifikátu
 přes REST API CA EET popsané v [„CA EET 2 — Postupy získání pokladního
@@ -953,40 +942,49 @@ ne SOAP/XMLDSig vůči `trzbyeet.gov.cz` — hlavní vstupní bod
 `@finitoapp/eet-client` tento modul nikdy neimportuje.
 
 ```ts
-import { createCaeetRenewalClient } from "@finitoapp/eet-client/caeet-renewal";
+import {
+  CaeetEndpoint,
+  createCaeetRenewalClient,
+} from "@finitoapp/eet-client/caeet-renewal";
 
 const renewal = createCaeetRenewalClient({
-  baseUrl: "https://caeet.example/api", // viz "Neznámé/nepublikované" níže
-  signer, // podepisuje JWT certifikátem, který se obnovuje — stejný EetSigner jako pro submit()
+  baseUrl: CaeetEndpoint.test,
+  signer, // Signs with the certificate being renewed; the same EetSigner as for submit().
 });
 
 const request = await renewal.requestRenewal();
 if (!request.ok) throw request.error;
 
 let status = await renewal.getStatus(request.value.reqId);
-// INPROCESS se pozná podle přítomnosti pollAfterSeconds/retryAfterSeconds (jediná typovaná pole,
-// která tato SDK ze status odpovědi čte — viz "Neznámé/nepublikované" níže, proč nehádá pole se
-// samotným stavem).
-while (
-  status.ok &&
-  (status.value.pollAfterSeconds !== undefined || status.value.retryAfterSeconds !== undefined)
-) {
-  const delaySeconds = status.value.pollAfterSeconds ?? status.value.retryAfterSeconds ?? 30;
+while (status.ok && status.value.state === "INPROCESS") {
+  const delaySeconds = status.value.retryAfterSeconds ?? status.value.pollAfterSeconds;
   await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
   status = await renewal.getStatus(request.value.reqId);
 }
 if (!status.ok) throw status.error;
-// status.value.raw je teď RequestStatusDTO mimo INPROCESS — ISSUED, DELIVERING, FINISHED, nebo
-// REJECTED. Tato SDK obsah nehádá (viz níže), takže si stav ověřte sami dle skutečné odpovědi
-// nebo caeetapi_jwt.yml; u REJECTED nepokračujte na claimPkcs12() níže (podle referenčního
-// dokumentu je platný jen pro ISSUED/DELIVERING).
+if (status.value.state === "REJECTED") throw new Error(status.value.rejectedReason);
+if (status.value.state !== "ISSUED" && status.value.state !== "DELIVERING") {
+  throw new Error(`Request cannot be downloaded in state ${status.value.state}.`);
+}
 
 const claim = await renewal.claimPkcs12(request.value.reqId);
 if (!claim.ok) throw claim.error;
-// claim.value.raw je Pkcs12DTO (PKCS#12 v base64 + heslo) — po bezpečném
-// uložení potvrďte stažení, viz "Neznámé/nepublikované" níže.
-await renewal.ackDownload(request.value.reqId);
+await storeCertificateSecurely(claim.value.pkcs12, claim.value.password, claim.value.certificate);
+const ack = await renewal.ackDownload(request.value.reqId);
+if (!ack.ok) throw ack.error;
 ```
+
+`storeCertificateSecurely` představuje vlastní bezpečné uložení v aplikaci.
+Stažení potvrďte až po úspěšném uložení; po `ackDownload()` server data smaže.
+
+| Konstanta | Základní URL |
+| --- | --- |
+| `CaeetEndpoint.test` | `https://test.caeet.gov.cz/api` |
+| `CaeetEndpoint.trial` | `https://zkus.caeet.gov.cz/api` |
+| `CaeetEndpoint.production` | `https://caeet.gov.cz/api` |
+
+`baseUrl` zůstává povinné a přijímá i vlastní URL. Jde o adresy REST API
+certifikační autority, nikoli [EET SOAP endpointy](#endpointy).
 
 `buildCaeetAuthorizationJwt(signer)` (export tohoto modulu) sestaví
 autentizační JWT přesně dle specifikace — hlavička `alg: RS256`, `typ: JWT`,
@@ -1018,23 +1016,27 @@ odeslání](#opakované-odeslání)), ani tento modul sám nepolluje — voláte
 dokud žádost neopustí stav `INPROCESS`, přesně podle „Příklad sekvence volání“
 ve zdrojovém dokumentu.
 
-**Neznámé/nepublikované — čtěte, než použijete:**
+**Typované odpovědi podle OpenAPI:**
 
-- **`baseUrl` není nikde publikované.** Zdrojový dokument říká jen, že „URL
-  pro přístup k API jsou součástí definice API“ (souboru `docs/reference/eet-2.0/caeetapi_jwt.yml`),
-  který ale s tímto SDK není distribuovaný ani jinak veřejně dostupný.
-  `baseUrl` tohoto API musíte získat a dodat sami; jde o jiné rozhraní než
-  EET SOAP endpointy uvedené v sekci [Endpointy](#endpointy).
-- **Přesný tvar odpovědi mimo `reqId`/`pollAfterSeconds` není publikovaný.**
-  Zdrojový dokument doslovně jmenuje jen `.reqId` (`POST /request/renew`) a
-  `.pollAfterSeconds` (`GET .../status`) — stavový výčet
-  (`INPROCESS`/`ISSUED`/`DELIVERING`/`FINISHED`/`REJECTED`) i obsah
-  `Pkcs12DTO` (PKCS#12 v base64, heslo, metadata) popisuje jen prózou, bez
-  jmen polí. Tato SDK proto tato pole nehádá: `getStatus()` vrací typovaně jen
-  `pollAfterSeconds`/`retryAfterSeconds`, zatímco `claimPkcs12()`,
-  `ackDownload()` a `listUnfinished()` vrací syrové `raw: unknown` tělo —
-  rozeberte si ho sami, jakmile budete mít reálnou odpověď nebo skutečný
-  `docs/reference/eet-2.0/caeetapi_jwt.yml`.
+- `requestRenewal()` vrací `reqId` ve formátu UUID.
+- `getStatus()` vrací `reqId` a stav `state`. Pro `INPROCESS` je povinné
+  kladné celé `pollAfterSeconds`, pro `REJECTED` řetězec `rejectedReason`.
+  Další stavy jsou `ISSUED`, `DELIVERING` a `FINISHED`; hlavička `Retry-After`
+  je dostupná jako volitelné `retryAfterSeconds`.
+- `claimPkcs12()` vrací `pkcs12` v base64, `password` a `certificate`.
+  Metadata obsahují sériové číslo `sn` jako řetězec, `validFrom`, `validTo`
+  a stav certifikátu `VALID`, `EXPIRED`, `REVOKED` nebo `ON_CRL`.
+  Volitelné jsou `revocationTime`, `description` a `email`.
+- `listUnfinished()` vrací `count` a seznam UUID `data`.
+- `ackDownload()` podle specifikace dostává prázdnou odpověď `204 No Content`.
+
+Výsledky zachovávají původní `raw: unknown`. SDK kontroluje povinná pole,
+jejich typy, UUID, stavy, intervaly, formát base64, hesla a data platnosti;
+pro datum přijímá i oddělení mezerou z příkladů OpenAPI a zlomky sekundy.
+Strukturálně či obsahově neplatné odpovědi vrací jako `CaeetResponseSchemaError`
+s HTTP statusem, bez citlivého obsahu odpovědi. Syntakticky neplatné JSON
+nadále vrací jako `CaeetJsonError`. Neznámá pole toleruje a zachovává v `raw`.
+Vnitřní obsah souboru PKCS#12 lze následně ověřit pomocí `parsePkcs12()`.
 
 Data vrácená z `claimPkcs12()` jsou vysoce citlivá (heslem chráněný privátní
 klíč) — nikdy je nezalogujte ani necachujte, stejná hygiena jako u

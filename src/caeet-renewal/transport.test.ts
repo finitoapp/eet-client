@@ -59,6 +59,20 @@ describe("sendCaeetRequest", () => {
     assert.strictEqual(result.retryAfterSeconds, undefined);
   });
 
+  test("ignores invalid Retry-After intervals", async () => {
+    for (const value of ["0", "-1", "1.5", "invalid", "9".repeat(400)]) {
+      const result = getOrThrow(
+        await sendCaeetRequest({
+          url: "https://example.test/x",
+          method: "GET",
+          authorizationJwt: "jwt",
+          fetchImpl: async () => jsonResponse("{}", { "Retry-After": value }),
+        }),
+      );
+      assert.equal(result.retryAfterSeconds, undefined);
+    }
+  });
+
   test("wraps a network failure in CaeetNetworkError", async () => {
     const fetchImpl = (async () => {
       throw new TypeError("fetch failed");
