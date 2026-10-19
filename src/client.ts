@@ -2,10 +2,15 @@ import { generateEetDateTime } from "./core/generate.ts";
 import { parseAndVerifyResponse } from "./core/parse-response.ts";
 import { buildSignedRequest } from "./core/sign.ts";
 import { webCryptoBackend } from "./core/webcrypto.ts";
-import { type Result, tryAsync } from "./result.ts";
+import { err, type Result, tryAsync } from "./result.ts";
 import { sendSoapRequest } from "./transport/transport.ts";
 import type { EetClientOptions } from "./types/client.ts";
-import { createEetSignerError, createEetValidationError, type EetError } from "./types/errors.ts";
+import {
+  createEetResponseSchemaError,
+  createEetSignerError,
+  createEetValidationError,
+  type EetError,
+} from "./types/errors.ts";
 import type { EetHeader, EetSubmitOptions, Uuid } from "./types/header.ts";
 import type { EetReceiptData } from "./types/receipt.ts";
 import type { EetSubmitOutcome } from "./types/result.ts";
@@ -87,7 +92,7 @@ export function createEetClient(options: EetClientOptions): EetClient {
       if (!httpResult.ok) return httpResult;
       const httpResponse = httpResult.value;
 
-      return parseAndVerifyResponse(httpResponse.bodyText, {
+      const responseResult = await parseAndVerifyResponse(httpResponse.bodyText, {
         cryptoBackend: backend,
         httpStatus: httpResponse.httpStatus,
         responseSignatureVerifier,
@@ -95,6 +100,20 @@ export function createEetClient(options: EetClientOptions): EetClient {
           ? { globalTransactionId: httpResponse.globalTransactionId }
           : {}),
       });
+      if (
+        responseResult.ok &&
+        responseResult.value.status === "accepted" &&
+        responseResult.value.uuid !== header.uuid
+      ) {
+        return err(
+          createEetResponseSchemaError({
+            message: "Confirmation UUID does not match the submitted request UUID.",
+            httpStatus: httpResponse.httpStatus,
+            globalTransactionId: httpResponse.globalTransactionId,
+          }),
+        );
+      }
+      return responseResult;
     },
   };
 }

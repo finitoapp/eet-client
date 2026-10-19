@@ -26,8 +26,7 @@ test("explicit backend covers PKCS#12 and submit without global crypto or Buffer
   );
   // Node Response construction itself requires global Buffer; prepare the fake server first.
   const responses = Array.from({ length: 5 }, () => new Response(response, { status: 200 }));
-  // Deno implements node:crypto.randomUUID through the global Web Crypto object.
-  const randomUUID = globalThis.crypto.randomUUID.bind(globalThis.crypto);
+  const randomUUID = () => "12345678-1234-4234-8234-123456789abc";
   const cryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
   const bufferDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Buffer");
   Object.defineProperty(globalThis, "crypto", { configurable: true, value: undefined });

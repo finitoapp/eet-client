@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import {
+  brandedHeader,
   brandedReceipt,
   buildPotvrzeniOdpoved,
   buildSignedOdpovedResponse,
@@ -110,6 +111,61 @@ describe("End-to-end submit() with a Web Crypto-only signer and verifier", () =>
     assert.strictEqual(outcome.test, true);
     assert.strictEqual(outcome.globalTransactionId, "playground-trace-1");
   });
+});
+
+test("submit() rejects a signed confirmation for another request UUID", async () => {
+  const signer = await createTestSigner("test-signer.cert.der", "test-signer.key.pk8");
+  const responseUuid = "12345678-1234-4234-8234-123456789abc";
+  const response = await buildSignedOdpovedResponse(
+    buildPotvrzeniOdpoved({
+      uuid: responseUuid,
+      receivedAt: "2027-01-07T22:01:05+01:00",
+      pok: "987a6be5-6af5-44f3-b4fc-987654321000-ff",
+    }),
+    signer,
+  );
+  const client = createEetClient({
+    endpoint: "https://example.test/eet",
+    signer,
+    responseSignatureVerifier: createCryptoKeyResponseSignatureVerifier(
+      readFixture("test-signer.pub.spki.der"),
+      readFixture("test-signer.cert.der"),
+    ),
+    fetch: async () =>
+      new Response(response, {
+        status: 200,
+        headers: { "X-Global-Transaction-Id": "uuid-mismatch-trace" },
+      }),
+  });
+  const receipt = brandedReceipt({
+    eic_popl: "CZ8551015704",
+    id_jednotky: "181",
+    id_pokl: "cash-register",
+    porad_cis: "1",
+    dat_trzby: "2027-01-07T22:01:00+01:00",
+    celk_trzba: "100.00",
+  });
+  const header = brandedHeader({
+    uuid: "22345678-1234-4234-8234-123456789abc",
+    sentAt: "2027-01-07T22:01:00+01:00",
+    firstSubmission: true,
+    verification: false,
+  });
+  for (const options of [{ firstSubmission: true }, header]) {
+    const result = await client.submit(receipt, options);
+    assert.equal(result.ok, false);
+    if (result.ok) throw new Error("Expected a UUID mismatch error.");
+    assert.partialDeepStrictEqual(result.error, {
+      type: "EetResponseSchemaError",
+      message: "Confirmation UUID does not match the submitted request UUID.",
+      httpStatus: 200,
+      globalTransactionId: "uuid-mismatch-trace",
+    });
+  }
+  const result = getOrThrow(
+    await client.submit(receipt, brandedHeader({ ...header, uuid: responseUuid })),
+  );
+  assert.equal(result.status, "accepted");
 });
 
 describe("submit() with a failing signer", () => {
