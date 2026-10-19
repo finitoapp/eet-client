@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import {
+  CAEET_OTHER_REQUEST_ID,
+  CAEET_PKCS12_CLAIM,
+  CAEET_REQUEST_ID,
+} from "../../test/caeet-fixtures.ts";
 import { decodeBase64Url } from "../core/base64.ts";
 import { getOrThrow } from "../result.ts";
 import {
@@ -38,7 +43,9 @@ function fetchReturning(
 
 describe("requestCaeetRenewal", () => {
   test("returns reqId and raw body on success", async () => {
-    const { fetch: fetchImpl, captured } = fetchReturning('{"reqId":"req-1"}');
+    const { fetch: fetchImpl, captured } = fetchReturning(
+      JSON.stringify({ reqId: CAEET_REQUEST_ID }),
+    );
     const result = getOrThrow(
       await requestCaeetRenewal({
         baseUrl: "https://example.test",
@@ -46,14 +53,16 @@ describe("requestCaeetRenewal", () => {
         fetch: fetchImpl,
       }),
     );
-    assert.strictEqual(result.reqId, "req-1");
-    assert.deepStrictEqual(result.raw, { reqId: "req-1" });
+    assert.strictEqual(result.reqId, CAEET_REQUEST_ID);
+    assert.deepStrictEqual(result.raw, { reqId: CAEET_REQUEST_ID });
     assert.strictEqual(captured[0]?.url, "https://example.test/request/renew");
     assert.strictEqual(captured[0]?.init.method, "POST");
   });
 
   test("normalizes a trailing slash on baseUrl", async () => {
-    const { fetch: fetchImpl, captured } = fetchReturning('{"reqId":"req-1"}');
+    const { fetch: fetchImpl, captured } = fetchReturning(
+      JSON.stringify({ reqId: CAEET_REQUEST_ID }),
+    );
     await requestCaeetRenewal({
       baseUrl: "https://example.test/",
       signer: fakeSigner(),
@@ -63,7 +72,9 @@ describe("requestCaeetRenewal", () => {
   });
 
   test("preserves baseUrl's path and query string", async () => {
-    const { fetch: fetchImpl, captured } = fetchReturning('{"reqId":"req-1"}');
+    const { fetch: fetchImpl, captured } = fetchReturning(
+      JSON.stringify({ reqId: CAEET_REQUEST_ID }),
+    );
     await requestCaeetRenewal({
       baseUrl: "https://example.test/api?tenant=1",
       signer: fakeSigner(),
@@ -128,7 +139,9 @@ describe("requestCaeetRenewal", () => {
   });
 
   test("passes ttlSeconds through to the signed JWT", async () => {
-    const { fetch: fetchImpl, captured } = fetchReturning('{"reqId":"req-1"}');
+    const { fetch: fetchImpl, captured } = fetchReturning(
+      JSON.stringify({ reqId: CAEET_REQUEST_ID }),
+    );
     await requestCaeetRenewal({
       baseUrl: "https://example.test",
       signer: fakeSigner(),
@@ -148,9 +161,13 @@ describe("requestCaeetRenewal", () => {
 
 describe("getCaeetRenewalStatus", () => {
   test("extracts pollAfterSeconds and retryAfterSeconds, encodes reqId in the URL", async () => {
-    const { fetch: fetchImpl, captured } = fetchReturning('{"pollAfterSeconds":5}', 200, {
-      "Retry-After": "5",
-    });
+    const { fetch: fetchImpl, captured } = fetchReturning(
+      JSON.stringify({ reqId: CAEET_REQUEST_ID, state: "INPROCESS", pollAfterSeconds: 5 }),
+      200,
+      {
+        "Retry-After": "5",
+      },
+    );
     const result = getOrThrow(
       await getCaeetRenewalStatus("req/1", {
         baseUrl: "https://example.test",
@@ -165,7 +182,9 @@ describe("getCaeetRenewalStatus", () => {
   });
 
   test("omits pollAfterSeconds when absent from the body", async () => {
-    const { fetch: fetchImpl } = fetchReturning('{"whatever":true}');
+    const { fetch: fetchImpl } = fetchReturning(
+      JSON.stringify({ reqId: CAEET_REQUEST_ID, state: "ISSUED" }),
+    );
     const result = getOrThrow(
       await getCaeetRenewalStatus("req-1", {
         baseUrl: "https://example.test",
@@ -174,15 +193,13 @@ describe("getCaeetRenewalStatus", () => {
       }),
     );
     assert.strictEqual(result.pollAfterSeconds, undefined);
-    assert.deepStrictEqual(result.raw, { whatever: true });
+    assert.deepStrictEqual(result.raw, { reqId: CAEET_REQUEST_ID, state: "ISSUED" });
   });
 });
 
 describe("claimCaeetPkcs12", () => {
-  test("passes the parsed body through as raw", async () => {
-    const { fetch: fetchImpl, captured } = fetchReturning(
-      '{"pkcs12":"base64...","password":"secret"}',
-    );
+  test("returns validated fields and the raw body", async () => {
+    const { fetch: fetchImpl, captured } = fetchReturning(JSON.stringify(CAEET_PKCS12_CLAIM));
     const result = getOrThrow(
       await claimCaeetPkcs12("req-1", {
         baseUrl: "https://example.test",
@@ -190,7 +207,10 @@ describe("claimCaeetPkcs12", () => {
         fetch: fetchImpl,
       }),
     );
-    assert.deepStrictEqual(result.raw, { pkcs12: "base64...", password: "secret" });
+    assert.deepStrictEqual(result.raw, CAEET_PKCS12_CLAIM);
+    assert.strictEqual(result.pkcs12, CAEET_PKCS12_CLAIM.pkcs12);
+    assert.strictEqual(result.password, CAEET_PKCS12_CLAIM.password);
+    assert.deepStrictEqual(result.certificate, CAEET_PKCS12_CLAIM.certificate);
     assert.strictEqual(captured[0]?.url, "https://example.test/request/req-1/claim-download");
     assert.strictEqual(captured[0]?.init.method, "POST");
   });
@@ -213,8 +233,10 @@ describe("ackCaeetPkcs12Download", () => {
 });
 
 describe("listUnfinishedCaeetRequests", () => {
-  test("passes the parsed body through as raw", async () => {
-    const { fetch: fetchImpl, captured } = fetchReturning('["req-1","req-2"]');
+  test("returns validated fields and the raw body", async () => {
+    const { fetch: fetchImpl, captured } = fetchReturning(
+      JSON.stringify({ count: 2, data: [CAEET_REQUEST_ID, CAEET_OTHER_REQUEST_ID] }),
+    );
     const result = getOrThrow(
       await listUnfinishedCaeetRequests({
         baseUrl: "https://example.test",
@@ -222,8 +244,172 @@ describe("listUnfinishedCaeetRequests", () => {
         fetch: fetchImpl,
       }),
     );
-    assert.deepStrictEqual(result.raw, ["req-1", "req-2"]);
+    assert.strictEqual(result.count, 2);
+    assert.deepStrictEqual(result.data, [CAEET_REQUEST_ID, CAEET_OTHER_REQUEST_ID]);
+    assert.deepStrictEqual(result.raw, { count: 2, data: result.data });
     assert.strictEqual(captured[0]?.url, "https://example.test/request/not-finished");
     assert.strictEqual(captured[0]?.init.method, "GET");
+  });
+});
+
+describe("OpenAPI response validation", () => {
+  const options = { baseUrl: "https://example.test/api", signer: fakeSigner() };
+
+  for (const state of ["INPROCESS", "ISSUED", "DELIVERING", "FINISHED", "REJECTED"] as const) {
+    test(`reads the ${state} state and retains raw extensions`, async () => {
+      const body = {
+        reqId: CAEET_REQUEST_ID,
+        state,
+        ...(state === "INPROCESS" ? { pollAfterSeconds: 2 } : {}),
+        ...(state === "REJECTED" ? { rejectedReason: "Certificate rejected." } : {}),
+        extension: true,
+        retryAfterSeconds: "untrusted-body-field",
+      };
+      const result = getOrThrow(
+        await getCaeetRenewalStatus(CAEET_REQUEST_ID, {
+          ...options,
+          fetch: fetchReturning(JSON.stringify(body)).fetch,
+        }),
+      );
+      assert.equal(result.reqId, CAEET_REQUEST_ID);
+      assert.equal(result.state, state);
+      assert.deepEqual(result.raw, body);
+      assert.equal(result.retryAfterSeconds, undefined);
+      if (result.state === "INPROCESS") assert.equal(result.pollAfterSeconds, 2);
+      if (result.state === "REJECTED") assert.equal(result.rejectedReason, "Certificate rejected.");
+    });
+  }
+
+  const invalidRequests: ReadonlyArray<unknown> = [
+    null,
+    [],
+    {},
+    { reqId: "" },
+    { reqId: "req-1" },
+    { reqId: 123 },
+  ];
+  const invalidStatuses: ReadonlyArray<unknown> = [
+    null,
+    [],
+    "ISSUED",
+    {},
+    { reqId: CAEET_REQUEST_ID },
+    { reqId: "invalid", state: "ISSUED" },
+    { reqId: CAEET_REQUEST_ID, state: "UNKNOWN" },
+    { reqId: CAEET_REQUEST_ID, state: "INPROCESS" },
+    ...[0, -1, 1.5, "2", null, 1e100].map((pollAfterSeconds) => ({
+      reqId: CAEET_REQUEST_ID,
+      state: "INPROCESS",
+      pollAfterSeconds,
+    })),
+    { reqId: CAEET_REQUEST_ID, state: "REJECTED" },
+    { reqId: CAEET_REQUEST_ID, state: "REJECTED", rejectedReason: 1 },
+  ];
+  const invalidClaims: ReadonlyArray<unknown> = [
+    null,
+    [],
+    {},
+    ...[undefined, 1, "!", "AB=="].map((pkcs12) => ({ ...CAEET_PKCS12_CLAIM, pkcs12 })),
+    ...[undefined, null, "secret", "ABcd12!?"].map((password) => ({
+      ...CAEET_PKCS12_CLAIM,
+      password,
+    })),
+    ...[
+      undefined,
+      null,
+      {},
+      { ...CAEET_PKCS12_CLAIM.certificate, sn: 123 },
+      { ...CAEET_PKCS12_CLAIM.certificate, sn: "not-numeric" },
+      { ...CAEET_PKCS12_CLAIM.certificate, state: "UNKNOWN" },
+      { ...CAEET_PKCS12_CLAIM.certificate, validFrom: "2026-02-30T00:00:00Z" },
+      { ...CAEET_PKCS12_CLAIM.certificate, validTo: "not-a-date" },
+      { ...CAEET_PKCS12_CLAIM.certificate, revocationTime: 123 },
+      { ...CAEET_PKCS12_CLAIM.certificate, description: null },
+      { ...CAEET_PKCS12_CLAIM.certificate, email: false },
+    ].map((certificate) => ({ ...CAEET_PKCS12_CLAIM, certificate })),
+  ];
+  const invalidLists: ReadonlyArray<unknown> = [
+    null,
+    [],
+    [CAEET_REQUEST_ID],
+    {},
+    { count: 0 },
+    { data: [] },
+    { count: -1, data: [] },
+    { count: 1.5, data: [] },
+    { count: "0", data: [] },
+    { count: 0, data: null },
+    { count: 1, data: ["bad-id"] },
+    { count: 1, data: [123] },
+  ];
+  const cases = [
+    {
+      name: "renewal",
+      bodies: invalidRequests,
+      call: (fetch: typeof globalThis.fetch) => requestCaeetRenewal({ ...options, fetch }),
+    },
+    {
+      name: "status",
+      bodies: invalidStatuses,
+      call: (fetch: typeof globalThis.fetch) =>
+        getCaeetRenewalStatus(CAEET_REQUEST_ID, { ...options, fetch }),
+    },
+    {
+      name: "claim",
+      bodies: invalidClaims,
+      call: (fetch: typeof globalThis.fetch) =>
+        claimCaeetPkcs12(CAEET_REQUEST_ID, { ...options, fetch }),
+    },
+    {
+      name: "unfinished",
+      bodies: invalidLists,
+      call: (fetch: typeof globalThis.fetch) => listUnfinishedCaeetRequests({ ...options, fetch }),
+    },
+  ];
+  for (const scenario of cases) {
+    test(`rejects invalid ${scenario.name} bodies without exposing their contents`, async () => {
+      for (const body of [...scenario.bodies, undefined]) {
+        const result = await scenario.call(fetchReturning(JSON.stringify(body) ?? "").fetch);
+        assert.equal(result.ok, false);
+        if (result.ok) throw new Error("Expected response schema validation to fail.");
+        assert.partialDeepStrictEqual(result.error, {
+          type: "CaeetResponseSchemaError",
+          httpStatus: 200,
+        });
+        const serialized = JSON.stringify(result.error);
+        assert.equal(serialized.includes(CAEET_PKCS12_CLAIM.password), false);
+        assert.equal(serialized.includes(CAEET_PKCS12_CLAIM.pkcs12), false);
+      }
+    });
+  }
+
+  test("accepts an empty unfinished list", async () => {
+    const result = getOrThrow(
+      await listUnfinishedCaeetRequests({
+        ...options,
+        fetch: fetchReturning('{"count":0,"data":[]}').fetch,
+      }),
+    );
+    assert.deepEqual(result.data, []);
+    assert.equal(result.count, 0);
+  });
+
+  test("accepts all certificate states and optional metadata", async () => {
+    for (const state of ["VALID", "EXPIRED", "REVOKED", "ON_CRL"]) {
+      const certificate = {
+        ...CAEET_PKCS12_CLAIM.certificate,
+        state,
+        revocationTime: "2026-02-04T13:13:33Z",
+        description: "Certificate",
+        email: "test@example.test",
+      };
+      const result = getOrThrow(
+        await claimCaeetPkcs12(CAEET_REQUEST_ID, {
+          ...options,
+          fetch: fetchReturning(JSON.stringify({ ...CAEET_PKCS12_CLAIM, certificate })).fetch,
+        }),
+      );
+      assert.deepEqual(result.certificate, certificate);
+    }
   });
 });

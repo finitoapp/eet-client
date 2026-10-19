@@ -49,11 +49,19 @@ dev`.
 ## Nasazení na Vercel
 
 Nasazení řeší [`.github/workflows/deploy-eet-tester.yml`](../.github/workflows/deploy-eet-tester.yml)
-při každém pushi do `main`, který se dotkne `eet-tester/` nebo `src/` (nebo
+při každém pushi do `main`, který se dotkne `eet-tester/`, `src/`, kořenového
+`package.json`, `bun.lock` nebo samotného workflow (nebo
 ručně přes „Run workflow"). Build se dělá přímo v CI přes Vercel CLI
 (`vercel build`), ne v cloudu Vercelu — díky tomu vidí stejný úplný checkout
 monorepa jako zbytek CI, což je nutné kvůli závislosti na sourozeneckém
 `../src` (viz komentář ve [`vite.config.ts`](./vite.config.ts)).
+
+Automatické i ruční nasazení nejprve spustí celý sdílený CI workflow pro
+stejný commit. Nasazení pokračuje pouze při jeho úspěchu; síťové integrační
+testy zůstávají podle pravidel CI neblokující.
+
+Všechny kroky používají stejnou přesnou verzi Vercel CLI nastavenou
+v `VERCEL_CLI_VERSION` ve workflow; aktualizuje se změnou této hodnoty.
 
 **Všechny `vercel` příkazy (link/pull/build/deploy) se spouští z kořene
 repozitáře, ne z `eet-tester/`** — projektovo nastavení „Root Directory"

@@ -31,7 +31,7 @@ import {
   MAX_WARNINGS,
   POK_PATTERN,
 } from "./patterns.ts";
-import { sha256 } from "./webcrypto.ts";
+import { type EetCryptoBackend, sha256 } from "./webcrypto.ts";
 import { canonicalizeToBytes } from "./xml/c14n.ts";
 import {
   findChild,
@@ -43,6 +43,7 @@ import {
 } from "./xml/index.ts";
 
 export interface ParseResponseContext {
+  readonly cryptoBackend?: EetCryptoBackend;
   readonly httpStatus: number;
   readonly globalTransactionId?: string;
   readonly responseSignatureVerifier: ResponseSignatureVerifier;
@@ -302,7 +303,7 @@ async function verifyAcceptedSignature(
   const bodyCanonical = canonicalizeToBytes(body);
   const signedInfoCanonical = canonicalizeToBytes(signedInfo);
 
-  const computedDigest = await sha256(bodyCanonical);
+  const computedDigest = await sha256(bodyCanonical, context.cryptoBackend);
   if (!bytesEqual(computedDigest, digestValue)) {
     throw fail("soap:Body digest does not match the value in ds:DigestValue.");
   }

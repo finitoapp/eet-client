@@ -1,11 +1,17 @@
-import { generateEetDateTime, generateUuid } from "./core/generate.ts";
+import { generateEetDateTime } from "./core/generate.ts";
 import { parseAndVerifyResponse } from "./core/parse-response.ts";
 import { buildSignedRequest } from "./core/sign.ts";
-import { type Result, tryAsync } from "./result.ts";
+import { webCryptoBackend } from "./core/webcrypto.ts";
+import { err, type Result, tryAsync } from "./result.ts";
 import { sendSoapRequest } from "./transport/transport.ts";
 import type { EetClientOptions } from "./types/client.ts";
-import { createEetSignerError, createEetValidationError, type EetError } from "./types/errors.ts";
-import type { EetHeader, EetSubmitOptions } from "./types/header.ts";
+import {
+  createEetResponseSchemaError,
+  createEetSignerError,
+  createEetValidationError,
+  type EetError,
+} from "./types/errors.ts";
+import type { EetHeader, EetSubmitOptions, Uuid } from "./types/header.ts";
 import type { EetReceiptData } from "./types/receipt.ts";
 import type { EetSubmitOutcome } from "./types/result.ts";
 
@@ -28,7 +34,7 @@ export interface EetClient {
  * schema from `@finitoapp/eet-client/zod`, or any other validator producing the same branded type,
  * before calling it — and `options.uuid`/`options.sentAt`, if given, must already be branded —
  * `submit()` trusts both as-is. Omitted `uuid`/`sentAt` are filled in with
- * `generateUuid()`/`generateEetDateTime()`, correct by construction.
+ * the configured crypto backend / `generateEetDateTime()`, correct by construction.
  */
 export function createEetClient(options: EetClientOptions): EetClient {
   if (!options.responseSignatureVerifier) {
@@ -50,6 +56,7 @@ export function createEetClient(options: EetClientOptions): EetClient {
       issues: ["endpoint"],
     });
   }
+  const backend = options.cryptoBackend ?? webCryptoBackend;
   const endpoint = options.endpoint;
   const signer = options.signer;
   const responseSignatureVerifier = options.responseSignatureVerifier;
@@ -59,14 +66,14 @@ export function createEetClient(options: EetClientOptions): EetClient {
   return {
     async submit(data, submitOptions) {
       const header: EetHeader = {
-        uuid: submitOptions.uuid ?? generateUuid(),
+        uuid: submitOptions.uuid ?? (backend.randomUuid() as Uuid),
         sentAt: submitOptions.sentAt ?? generateEetDateTime(),
         firstSubmission: submitOptions.firstSubmission,
         verification: submitOptions.verification ?? false,
       };
 
       const signResult = await tryAsync(
-        () => buildSignedRequest(data, header, signer),
+        () => buildSignedRequest(data, header, signer, backend),
         (error) =>
           createEetSignerError({
             message: "signer failed to produce a certificate or signature.",
@@ -85,13 +92,28 @@ export function createEetClient(options: EetClientOptions): EetClient {
       if (!httpResult.ok) return httpResult;
       const httpResponse = httpResult.value;
 
-      return parseAndVerifyResponse(httpResponse.bodyText, {
+      const responseResult = await parseAndVerifyResponse(httpResponse.bodyText, {
+        cryptoBackend: backend,
         httpStatus: httpResponse.httpStatus,
         responseSignatureVerifier,
         ...(httpResponse.globalTransactionId !== undefined
           ? { globalTransactionId: httpResponse.globalTransactionId }
           : {}),
       });
+      if (
+        responseResult.ok &&
+        responseResult.value.status === "accepted" &&
+        responseResult.value.uuid !== header.uuid
+      ) {
+        return err(
+          createEetResponseSchemaError({
+            message: "Confirmation UUID does not match the submitted request UUID.",
+            httpStatus: httpResponse.httpStatus,
+            globalTransactionId: httpResponse.globalTransactionId,
+          }),
+        );
+      }
+      return responseResult;
     },
   };
 }

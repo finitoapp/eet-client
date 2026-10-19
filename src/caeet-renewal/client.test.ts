@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { CAEET_PKCS12_CLAIM, CAEET_REQUEST_ID } from "../../test/caeet-fixtures.ts";
 import { getOrThrow } from "../result.ts";
 import { createCaeetRenewalClient } from "./client.ts";
 import type { CaeetSigner } from "./types.ts";
@@ -38,17 +39,26 @@ describe("createCaeetRenewalClient", () => {
     const client = createCaeetRenewalClient({
       baseUrl: "https://example.test",
       signer: fakeSigner(),
-      fetch: fetchReturning('{"reqId":"req-1"}'),
+      fetch: fetchReturning(JSON.stringify({ reqId: CAEET_REQUEST_ID })),
     });
     const result = getOrThrow(await client.requestRenewal());
-    assert.strictEqual(result.reqId, "req-1");
+    assert.strictEqual(result.reqId, CAEET_REQUEST_ID);
   });
 
   test("getStatus()/claimPkcs12()/ackDownload()/listUnfinished() all resolve via the shared options", async () => {
     const client = createCaeetRenewalClient({
       baseUrl: "https://example.test",
       signer: fakeSigner(),
-      fetch: fetchReturning("{}"),
+      fetch: async (url) => {
+        const path = String(url);
+        if (path.endsWith("/ack-download")) return new Response(null, { status: 204 });
+        const body = path.endsWith("/status")
+          ? { reqId: CAEET_REQUEST_ID, state: "ISSUED" }
+          : path.endsWith("/claim-download")
+            ? CAEET_PKCS12_CLAIM
+            : { count: 0, data: [] };
+        return new Response(JSON.stringify(body));
+      },
     });
     assert.strictEqual((await client.getStatus("req-1")).ok, true);
     assert.strictEqual((await client.claimPkcs12("req-1")).ok, true);

@@ -28,13 +28,13 @@ export interface CaeetHttpResponse {
  * (e.g. an HTTP-date, which this API isn't documented to use). */
 function parseRetryAfterSeconds(headerValue: string | null): number | undefined {
   if (headerValue === null || !/^\d+$/.test(headerValue)) return undefined;
-  return Number(headerValue);
+  const seconds = Number(headerValue);
+  return Number.isSafeInteger(seconds) && seconds >= 1 ? seconds : undefined;
 }
 
 /**
  * Sends one authenticated JSON request to the CA EET renewal API. Never returns an `Err` for a
- * non-2xx HTTP status by itself — that is left to the caller, since this API's error bodies
- * aren't documented well enough for this SDK to interpret them itself (see `endpoints.ts`).
+ * non-2xx HTTP status by itself — status and JSON schema checks belong to `endpoints.ts`.
  */
 export async function sendCaeetRequest(
   options: SendCaeetRequestOptions,

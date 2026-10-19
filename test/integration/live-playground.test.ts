@@ -28,7 +28,8 @@ import { loadPlaygroundP12Signer } from "./p12-helper.ts";
  * issuer up to I.CA's real root (not bundled in this repo) — that is a real gap an integrator's
  * production verifier must close, e.g. with I.CA's published root from https://www.ica.cz.
  *
- * Disabled by default and in CI. Enable with `EET_TEST_LIVE_PLAYGROUND=1 bun test test/integration`.
+ * Disabled in the default test run. Enable locally with `EET_TEST_LIVE_PLAYGROUND=1 bun test test/integration`.
+ * CI runs this in a non-blocking network integration job.
  * Requires `openssl` in PATH (see `p12-helper.ts`) and network access to the playground.
  */
 const ENABLED = process.env["EET_TEST_LIVE_PLAYGROUND"] === "1";

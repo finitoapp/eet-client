@@ -15,7 +15,8 @@ Node.js, Bunu, Denu i moderních prohlížečích. SDK sestaví a podepíše SOA
 požadavek dle WS-Security/XMLDSig, odešle jej a bezpečně vyhodnotí odpověď
 systému EET.
 
-Balíček nemá žádné runtime závislosti (`zod` je jen volitelný
+Balíček nemá žádné povinné runtime závislosti (`react-native-quick-crypto` je volitelný
+peer pro React Native; `zod` je volitelný
 `peerDependency` pro podcestu [`@finitoapp/eet-client/zod`](#finitoappeet-clientzod),
 který se do vašeho bundlu nedostane, pokud ho neimportujete) — celé XML/C14N a
 XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
@@ -27,6 +28,8 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 
 - [Podporované runtimes](#podporované-runtimes)
 - [Instalace](#instalace)
+- [Endpointy](#endpointy)
+- [React Native](#react-native)
 - [Rychlý start](#rychlý-start)
   - [`signer` z reálného `.p12` souboru od GFŘ](#signer-z-reálného-p12-souboru-od-gfř)
 - [Signer](#signer)
@@ -64,10 +67,12 @@ XMLDSig zpracování je hand-rolled, viz [Validace vstupu](#validace-vstupu).
 | **Bun**      | aktuální stabilní verze                                                   |
 | **Deno**     | aktuální stabilní verze                                                   |
 | **Prohlížeč** | libovolný moderní, s `crypto.subtle` — viz [Použití v prohlížeči](#použití-v-prohlížeči) |
+| **Hermes / React Native** | volitelný export `/react-native` s explicitním Quick Crypto backendem; požadavky viz [React Native](#react-native) |
 
-SDK nikde nepoužívá Node-specifické API (žádný `node:` import) — jen
-standardní webové primitivy (`fetch`, `crypto.subtle`, `Uint8Array`,
-`TextEncoder`), proto se na všech čtyřech chová stejně. Kompatibilita
+SDK nikde nepoužívá Node-specifické API (žádný `node:` import). Sdílí
+implementaci protokolu a standardní webové primitivy (`fetch`, `Uint8Array`,
+`TextEncoder`, `TextDecoder`); kryptografii zajišťuje ve výchozím stavu
+`crypto.subtle`, v React Native explicitně předaný Quick Crypto backend. Kompatibilita
 Node.js/Bun/Deno je ověřená v CI proti stejné testovací sadě
 (`.github/workflows/ci.yml`); prohlížeč navíc pokrývá opt-in test v reálném
 Chromiu (viz [Použití v prohlížeči](#použití-v-prohlížeči)).
@@ -81,6 +86,98 @@ npm install @finitoapp/eet-client
 # nebo (Deno)
 deno add npm:@finitoapp/eet-client
 ```
+
+## Endpointy
+
+Cílové prostředí se volí explicitně v `createEetClient({ endpoint, ... })`:
+
+| Konstanta | URL |
+| --- | --- |
+| `EetEndpoint.production` | `https://trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4` |
+| `EetEndpoint.playground` | `https://pg.trzbyeet.gov.cz/eet/services/EETServiceSOAP/v4` |
+
+Produkční URL zveřejňuje GFŘ v dokumentu
+[Přístupové a provozní informace – produkční prostředí, verze 1.1, kapitola 2.1](https://eet.gov.cz/assets/cs/cmsmedia/pro-vyvojare/EET_pristupove_provozni_informace_produk-2.pdf).
+Podle kapitoly 4.1 začíná přechodný provoz 1. 11. 2026 a běžný provoz
+1. 1. 2027. Pro produkci použijte produkční pokladní certifikát a důvěru
+v podpisový certifikát produkčního serveru; playground má vlastní certifikáty.
+Parametr `endpoint` nadále přijímá i vlastní URL.
+
+## React Native
+
+Volitelný export `@finitoapp/eet-client/react-native` sdílí XML, PKCS#12 parser,
+podepisování, transport a kontrolu odpovědí s ostatními runtimes. Kryptografii
+předává aplikace explicitně; SDK neimportuje nativní moduly a nemění globální
+`crypto`, `Buffer` ani jiné objekty. Instalace a importy pro web a Node proto
+nativní závislosti nepotřebují.
+
+```sh
+bun add @finitoapp/eet-client react-native-quick-crypto@^1 react-native-nitro-modules react-native-quick-base64
+```
+
+Proveďte nativní instalaci podle [návodu Quick Crypto](https://github.com/margelo/react-native-quick-crypto#installation)
+a aplikaci znovu sestavte (u Expo použijte development build, nikoli Expo Go).
+Nevolejte `QuickCrypto.install()` a nenastavujte alias `crypto` v Metro.
+Runtime musí poskytovat `fetch`, `AbortController`, `TextEncoder` a UTF-8
+`TextDecoder`; jejich dostupnost závisí na verzi RN/Expo/Hermes. Případné
+chybějící textové API zajistí aplikace, SDK globální polyfilly neinstaluje.
+
+```ts
+import QuickCrypto from "react-native-quick-crypto";
+import {
+  createReactNativeCrypto,
+  EetEndpoint,
+  getOrThrow,
+  pickPrivateKeyCertificate,
+} from "@finitoapp/eet-client/react-native";
+import type { EetReceiptData } from "@finitoapp/eet-client";
+
+const native = createReactNativeCrypto(QuickCrypto);
+
+async function submitReceipt(
+  p12: Uint8Array,
+  password: string,
+  trustedServerCertificateDer: Uint8Array,
+  trustedServerSpkiDer: Uint8Array,
+  receipt: EetReceiptData,
+) {
+  const contents = getOrThrow(await native.parsePkcs12(p12, password));
+  const certificate = pickPrivateKeyCertificate(contents);
+  if (contents.privateKey === undefined || certificate === undefined) {
+    throw new Error("PKCS#12 contains no matching key and certificate.");
+  }
+  const privateKey = getOrThrow(native.importPrivateKey(contents.privateKey.der));
+  const publicKey = getOrThrow(native.importPublicKey(trustedServerSpkiDer));
+  const client = native.createEetClient({
+    endpoint: EetEndpoint.playground,
+    signer: native.createSigner(certificate.der, privateKey),
+    responseSignatureVerifier: native.createResponseSignatureVerifier(
+      publicKey,
+      trustedServerCertificateDer,
+    ),
+  });
+  return client.submit(receipt, { firstSubmission: true });
+}
+```
+
+`parsePkcs12`, `importPrivateKey` (PKCS#8 DER) a `importPublicKey` (SPKI DER)
+vracejí `Result`; ukázka používá `getOrThrow` na hranici aplikace.
+Podporované formáty PKCS#12 jsou stejné jako u exportu `pkcs12`.
+Verifier používá připnutí důvěryhodného serverového certifikátu a RSA-SHA256,
+nikoli validaci řetězce, expirace nebo revokace. SPKI musí odpovídat tomuto
+nezávisle ověřenému certifikátu, nikoli certifikátu pokladny.
+
+Do `native.createEetClient` lze předat i vlastní `ResponseSignatureVerifier`;
+SDK stále ověřuje digest odpovědi před jeho zavoláním přes předaný backend.
+Pro samostatné zpracování odpovědi použijte `native.parseAndVerifyResponse`.
+U `createEetClient` a `parseAndVerifyResponse` z hlavního exportu je nutné
+předat `cryptoBackend: native.cryptoBackend` explicitně. Adaptéry
+`createCryptoKeySigner` a `createCryptoKeyResponseSignatureVerifier` zůstávají
+určené pro Web Crypto.
+
+Automatické testy používají kompatibilní Node backend bez globálních `crypto`
+a `Buffer`. Ověřují PKCS#12, import klíčů, podpis požadavku, odpověď i vlastní
+verifier.
 
 ## Rychlý start
 
@@ -804,7 +901,7 @@ implementaci obou rozhraní, případně v izolovaném modulu/procesu.
 
 `test/integration/` obsahuje čtyři kategorie testů používajících skutečné
 pokladní certifikáty z `caeet/*.p12` a/nebo živou síť. Jsou vypnuté výchozím
-`bun test` i v CI (soubory `.p12` se v nich nikdy nezaznamenávají do výstupu
+`bun test` (soubory `.p12` se v nich nikdy nezaznamenávají do výstupu
 ani na disk — extrakce běží v paměti přes `openssl pkcs12`) a zapínají se
 explicitně proměnnou prostředí — pro každou kategorii existuje i vlastní
 `npm`/`bun` script:
@@ -831,22 +928,15 @@ bun run test:integration:live      # EET_TEST_LIVE_PLAYGROUND=1 bun test test/in
 bun run test:integration:live-browser  # EET_TEST_LIVE_PLAYGROUND_BROWSER=1 bun test test/integration
 ```
 
+CI spouští všechny čtyři kategorie samostatně. Lokální PKCS#12 testy jsou
+povinné; síťové testy CORS a živého odesílání jsou neblokující. Pro běh
+v prohlížeči CI instaluje Chromium včetně systémových závislostí.
+
 ## Automatizovaná obnova pokladního certifikátu (`@finitoapp/eet-client/caeet-renewal`)
 
-**Experimentální — zatím neověřeno proti žádnému skutečnému prostředí.**
-`docs/reference/eet-2.0/caeetapi_jwt.yml` (OpenAPI popis tohoto API) jmenuje tři prostředí —
-`test.caeet.gov.cz`, `zkus.caeet.gov.cz` a produkční `caeet.gov.cz` — ale k
-26. 7. 2026 žádné z nich nemá veřejný DNS záznam (ověřeno přímo dotazem na
-`8.8.8.8`; zóna `caeet.gov.cz` je delegovaná, ale bez `A`/`AAAA`/`CNAME`
-záznamu na kterékoli z těchto jmen). Na rozdíl od EET SOAP odesílání tržby,
-kde je playground (`pg.trzbyeet.gov.cz`) reálně dostupný a tato SDK proti
-němu má opt-in integrační testy (viz [Opt-in integrační testy
-s `caeet/*.p12`](#opt-in-integrační-testy-s-caeetp12)), tento modul **nebyl
-ověřen jediným skutečným HTTP voláním** — implementace vychází čistě z
-referenčního dokumentu a `docs/reference/eet-2.0/caeetapi_jwt.yml`. Očekávejte, že se po prvním
-reálném ověření proti nasazenému prostředí objeví breaking changes (chybný
-odhad tvaru chyby, HTTP chování, apod.) — nezávisle na verzování zbytku SDK
-(viz [Verzování](#verzování)).
+**Experimentální modul.** Typy, validace odpovědí a adresy prostředí vycházejí
+z [OpenAPI specifikace CA EET](./docs/reference/eet-2.0/caeetapi_jwt.yml).
+Platí samostatná pravidla verzování tohoto modulu (viz [Verzování](#verzování)).
 
 Volitelný podcestový modul pro automatizovanou obnovu pokladního certifikátu
 přes REST API CA EET popsané v [„CA EET 2 — Postupy získání pokladního
@@ -856,40 +946,49 @@ ne SOAP/XMLDSig vůči `trzbyeet.gov.cz` — hlavní vstupní bod
 `@finitoapp/eet-client` tento modul nikdy neimportuje.
 
 ```ts
-import { createCaeetRenewalClient } from "@finitoapp/eet-client/caeet-renewal";
+import {
+  CaeetEndpoint,
+  createCaeetRenewalClient,
+} from "@finitoapp/eet-client/caeet-renewal";
 
 const renewal = createCaeetRenewalClient({
-  baseUrl: "https://caeet.example/api", // viz "Neznámé/nepublikované" níže
-  signer, // podepisuje JWT certifikátem, který se obnovuje — stejný EetSigner jako pro submit()
+  baseUrl: CaeetEndpoint.test,
+  signer, // Signs with the certificate being renewed; the same EetSigner as for submit().
 });
 
 const request = await renewal.requestRenewal();
 if (!request.ok) throw request.error;
 
 let status = await renewal.getStatus(request.value.reqId);
-// INPROCESS se pozná podle přítomnosti pollAfterSeconds/retryAfterSeconds (jediná typovaná pole,
-// která tato SDK ze status odpovědi čte — viz "Neznámé/nepublikované" níže, proč nehádá pole se
-// samotným stavem).
-while (
-  status.ok &&
-  (status.value.pollAfterSeconds !== undefined || status.value.retryAfterSeconds !== undefined)
-) {
-  const delaySeconds = status.value.pollAfterSeconds ?? status.value.retryAfterSeconds ?? 30;
+while (status.ok && status.value.state === "INPROCESS") {
+  const delaySeconds = status.value.retryAfterSeconds ?? status.value.pollAfterSeconds;
   await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
   status = await renewal.getStatus(request.value.reqId);
 }
 if (!status.ok) throw status.error;
-// status.value.raw je teď RequestStatusDTO mimo INPROCESS — ISSUED, DELIVERING, FINISHED, nebo
-// REJECTED. Tato SDK obsah nehádá (viz níže), takže si stav ověřte sami dle skutečné odpovědi
-// nebo caeetapi_jwt.yml; u REJECTED nepokračujte na claimPkcs12() níže (podle referenčního
-// dokumentu je platný jen pro ISSUED/DELIVERING).
+if (status.value.state === "REJECTED") throw new Error(status.value.rejectedReason);
+if (status.value.state !== "ISSUED" && status.value.state !== "DELIVERING") {
+  throw new Error(`Request cannot be downloaded in state ${status.value.state}.`);
+}
 
 const claim = await renewal.claimPkcs12(request.value.reqId);
 if (!claim.ok) throw claim.error;
-// claim.value.raw je Pkcs12DTO (PKCS#12 v base64 + heslo) — po bezpečném
-// uložení potvrďte stažení, viz "Neznámé/nepublikované" níže.
-await renewal.ackDownload(request.value.reqId);
+await storeCertificateSecurely(claim.value.pkcs12, claim.value.password, claim.value.certificate);
+const ack = await renewal.ackDownload(request.value.reqId);
+if (!ack.ok) throw ack.error;
 ```
+
+`storeCertificateSecurely` představuje vlastní bezpečné uložení v aplikaci.
+Stažení potvrďte až po úspěšném uložení; po `ackDownload()` server data smaže.
+
+| Konstanta | Základní URL |
+| --- | --- |
+| `CaeetEndpoint.test` | `https://test.caeet.gov.cz/api` |
+| `CaeetEndpoint.trial` | `https://zkus.caeet.gov.cz/api` |
+| `CaeetEndpoint.production` | `https://caeet.gov.cz/api` |
+
+`baseUrl` zůstává povinné a přijímá i vlastní URL. Jde o adresy REST API
+certifikační autority, nikoli [EET SOAP endpointy](#endpointy).
 
 `buildCaeetAuthorizationJwt(signer)` (export tohoto modulu) sestaví
 autentizační JWT přesně dle specifikace — hlavička `alg: RS256`, `typ: JWT`,
@@ -921,22 +1020,27 @@ odeslání](#opakované-odeslání)), ani tento modul sám nepolluje — voláte
 dokud žádost neopustí stav `INPROCESS`, přesně podle „Příklad sekvence volání“
 ve zdrojovém dokumentu.
 
-**Neznámé/nepublikované — čtěte, než použijete:**
+**Typované odpovědi podle OpenAPI:**
 
-- **`baseUrl` není nikde publikované.** Zdrojový dokument říká jen, že „URL
-  pro přístup k API jsou součástí definice API“ (souboru `docs/reference/eet-2.0/caeetapi_jwt.yml`),
-  který ale s tímto SDK není distribuovaný ani jinak veřejně dostupný — stejně
-  jako u produkčního EET SOAP endpointu musíte `baseUrl` získat a dodat sami.
-- **Přesný tvar odpovědi mimo `reqId`/`pollAfterSeconds` není publikovaný.**
-  Zdrojový dokument doslovně jmenuje jen `.reqId` (`POST /request/renew`) a
-  `.pollAfterSeconds` (`GET .../status`) — stavový výčet
-  (`INPROCESS`/`ISSUED`/`DELIVERING`/`FINISHED`/`REJECTED`) i obsah
-  `Pkcs12DTO` (PKCS#12 v base64, heslo, metadata) popisuje jen prózou, bez
-  jmen polí. Tato SDK proto tato pole nehádá: `getStatus()` vrací typovaně jen
-  `pollAfterSeconds`/`retryAfterSeconds`, zatímco `claimPkcs12()`,
-  `ackDownload()` a `listUnfinished()` vrací syrové `raw: unknown` tělo —
-  rozeberte si ho sami, jakmile budete mít reálnou odpověď nebo skutečný
-  `docs/reference/eet-2.0/caeetapi_jwt.yml`.
+- `requestRenewal()` vrací `reqId` ve formátu UUID.
+- `getStatus()` vrací `reqId` a stav `state`. Pro `INPROCESS` je povinné
+  kladné celé `pollAfterSeconds`, pro `REJECTED` řetězec `rejectedReason`.
+  Další stavy jsou `ISSUED`, `DELIVERING` a `FINISHED`; hlavička `Retry-After`
+  je dostupná jako volitelné `retryAfterSeconds`.
+- `claimPkcs12()` vrací `pkcs12` v base64, `password` a `certificate`.
+  Metadata obsahují sériové číslo `sn` jako řetězec, `validFrom`, `validTo`
+  a stav certifikátu `VALID`, `EXPIRED`, `REVOKED` nebo `ON_CRL`.
+  Volitelné jsou `revocationTime`, `description` a `email`.
+- `listUnfinished()` vrací `count` a seznam UUID `data`.
+- `ackDownload()` podle specifikace dostává prázdnou odpověď `204 No Content`.
+
+Výsledky zachovávají původní `raw: unknown`. SDK kontroluje povinná pole,
+jejich typy, UUID, stavy, intervaly, formát base64, hesla a data platnosti;
+pro datum přijímá i oddělení mezerou z příkladů OpenAPI a zlomky sekundy.
+Strukturálně či obsahově neplatné odpovědi vrací jako `CaeetResponseSchemaError`
+s HTTP statusem, bez citlivého obsahu odpovědi. Syntakticky neplatné JSON
+nadále vrací jako `CaeetJsonError`. Neznámá pole toleruje a zachovává v `raw`.
+Vnitřní obsah souboru PKCS#12 lze následně ověřit pomocí `parsePkcs12()`.
 
 Data vrácená z `claimPkcs12()` jsou vysoce citlivá (heslem chráněný privátní
 klíč) — nikdy je nezalogujte ani necachujte, stejná hygiena jako u
@@ -991,9 +1095,9 @@ mimo předdefinovaných/číselných odkazů jsou odmítnuty) a před vrácením
 
 ## Rozsah první verze
 
-Není součástí: automatické retry/fronta, doménové workflow pokladny/účtenky,
-produkční endpoint (dokud jej GFŘ oficiálně nezveřejní — vždy jej dodá
-integrátor konfigurací). Načítání PKCS#12 (`.p12`/PFX) má vlastní, samostatný
+Není součástí: automatické retry/fronta a doménové workflow pokladny/účtenky.
+Produkční i playground endpoint jsou dostupné přes `EetEndpoint` (viz
+[Endpointy](#endpointy)). Načítání PKCS#12 (`.p12`/PFX) má vlastní, samostatný
 podcestový modul (`@finitoapp/eet-client/pkcs12`, viz [Nastavení klíče z
 reálného pokladního certifikátu (.p12/PFX)](#nastavení-klíče-z-reálného-pokladního-certifikátu-p12pfx))
 — hlavní vstupní bod ho stále neimportuje. Automatizovaná obnova

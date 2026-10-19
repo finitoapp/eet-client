@@ -16,10 +16,11 @@ import { loadPlaygroundP12Signer } from "./p12-helper.ts";
  * so this runs with CORS enforcement fully intact — no `--disable-web-security` or other
  * enforcement-suppressing flag is needed for the request itself to succeed.
  *
- * Disabled by default and in CI. Enable with `EET_TEST_LIVE_PLAYGROUND_BROWSER=1 bun test
+ * Disabled in the default test run. Enable locally with `EET_TEST_LIVE_PLAYGROUND_BROWSER=1 bun test
  * test/integration`. Requires `openssl` in PATH (see `p12-helper.ts`), network access to the
  * playground, and a locally installed Chromium (`bunx playwright install chromium`) — Playwright
- * does not ship a browser binary by default and none is installed in CI.
+ * does not ship a browser binary by default. CI installs Chromium with its system dependencies
+ * and runs this in the non-blocking `live-browser` integration job.
  */
 const ENABLED = process.env["EET_TEST_LIVE_PLAYGROUND_BROWSER"] === "1";
 

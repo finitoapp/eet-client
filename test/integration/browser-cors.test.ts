@@ -20,7 +20,8 @@ import { EetEndpoint } from "../../src/types/client.ts";
  * called directly from browser JavaScript on any origin without a backend/proxy in between. A
  * failing assertion here would mean the server stopped granting that access.
  *
- * Disabled by default and in CI. Enable with `EET_TEST_CORS=1 bun test test/integration`.
+ * Disabled in the default test run. Enable locally with `EET_TEST_CORS=1 bun test test/integration`.
+ * CI runs this in a non-blocking network integration job.
  * Requires network access to the playground.
  */
 const ENABLED = process.env["EET_TEST_CORS"] === "1";

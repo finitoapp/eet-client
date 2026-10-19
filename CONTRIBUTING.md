@@ -13,8 +13,9 @@ Soubory `caeet/*.p12` a heslo k nim jsou sdílené přístupové údaje playgrou
 zveřejněné GFŘ pro vývojáře, ne tajemství s reálným dopadem — přesto je
 nezaznamenávejte do výstupu, logů ani distribuce (obecná hygiena, viz README,
 sekce „Bezpečné nakládání s certifikáty“). Testy, které je používají
-(`test/integration/`), jsou opt-in přes proměnné prostředí a v CI se
-standardně nespouštějí — nový kód se stejnými soubory musí tento vzor dodržet.
+(`test/integration/`), jsou při místním běhu opt-in přes proměnné prostředí.
+CI je spouští samostatně: lokální PKCS#12 testy jsou povinné, síťové testy
+neblokující. Nový kód se stejnými soubory musí tento vzor dodržet.
 
 Každý příspěvek musí projít kontrolami:
 
